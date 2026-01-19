@@ -40,6 +40,10 @@ return new class extends Migration
             $table->timestamp('fecha_asignacion')->nullable();
             $table->timestamp('fecha_toma_caso')->nullable();
 
+            // Evidencias (Paths de archivos)
+            $table->json('evidencias_inicial')->nullable(); // Fotos/PDF al crear
+            $table->json('evidencias_final')->nullable();   // Fotos/PDF al cerrar/validar
+
             $table->timestamps();
         });
 

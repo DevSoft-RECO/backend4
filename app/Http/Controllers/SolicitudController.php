@@ -11,6 +11,21 @@ use Illuminate\Support\Facades\Auth;
 
 class SolicitudController extends Controller
 {
+    private function getPuestoNombre($user)
+    {
+        $puesto = $user->puesto ?? $user->cargo ?? 'Sin Puesto';
+
+        if (is_array($puesto)) {
+            return $puesto['nombre'] ?? $puesto['name'] ?? 'Sin Puesto';
+        }
+
+        if (is_object($puesto)) {
+             return $puesto->nombre ?? $puesto->name ?? 'Sin Puesto';
+        }
+
+        return $puesto;
+    }
+
     /**
      * Bandeja de solicitudes
      */
@@ -18,29 +33,23 @@ class SolicitudController extends Controller
     {
         $user = Auth::user(); // GenericUser from ValidateSSO
         $roles = $user->roles ?? [];
-        $cargo = $user->cargo ?? '';
+        $puestoNombre = $this->getPuestoNombre($user);
         $agencia_id = $user->idagencia ?? null;
 
         $query = Solicitud::query();
 
-        // 1. Jefe de Informática ve todo
-        if (in_array('informatica_jefe', $roles) || $cargo === 'Jefe de Informática') {
-            // Ve todo
-        }
-        // 2. Informática (Soporte)
-        elseif (in_array('informatica', $roles)) {
-             // Asumimos ve todo por ahora
-        }
-        // 3. Solicitante normal
+        // 3. Solicitante normal / Jefe Agencia / Super Admin
         if ($request->has('mis_asignaciones') && $request->mis_asignaciones == 'true') {
             $query->where('responsable_id', $user->id);
-            // Si es 'mis asignaciones', ignoramos la restricción de agencia para que vean lo asignado incluso si es de otra agencia (casos especiales)
-            // O mantenemos la lógica base. Por ahora, 'where responsable_id' es suficiente filtro.
         } else {
-            // Lógica normal de permisos por rol/agencia si NO es mi bandeja
-            // (Ya aplicada arriba parcialmente, pero refinamos)
-            if (!in_array('informatica_jefe', $roles) && $user->cargo !== 'Jefe de Informática' && !in_array('informatica', $roles)) {
-                 $query->where('agencia_id', $agencia_id);
+            // Si NO es Super Admin NI Informática (Soporte) -> Aplicar filtro de Agencia/Creador
+            if (!in_array('Super Admin', $roles) && !in_array('informatica', $roles)) {
+                 $query->where(function($q) use ($agencia_id, $user) {
+                     if ($agencia_id) {
+                        $q->where('agencia_id', $agencia_id);
+                     }
+                     $q->orWhere('creado_por_id', $user->id);
+                 });
             }
         }
 
@@ -62,7 +71,7 @@ class SolicitudController extends Controller
         $permisos = $user->permisos ?? [];
         $roles = $user->roles ?? [];
 
-        if (!in_array('Super Admin', $roles) && !in_array('solicitudes.crear', $permisos)) {
+        if (!in_array('Super Admin', $roles) && !in_array('Jefes de Agencia', $roles) && !in_array('crear_gestiones', $permisos)) {
             return response()->json(['message' => 'No tiene permiso para crear solicitudes'], 403);
         }
 
@@ -77,10 +86,22 @@ class SolicitudController extends Controller
             'estado' => 'reportada',
             'creado_por_id' => $user->id,
             'creado_por_nombre' => $user->name,
-            'creado_por_cargo' => $user->cargo ?? null,
+            'creado_por_cargo' => $this->getPuestoNombre($user),
+            'agencia_id' => $user->idagencia ?? null,
             'agencia_id' => $user->idagencia ?? null,
             // Categoria se asigna despues
         ]);
+
+        // Procesar evidencias iniciales
+        $evidenciasUrls = [];
+        if ($request->hasFile('evidencias')) {
+            foreach ($request->file('evidencias') as $file) {
+                // store in public/solicitudes/inicial
+                $path = $file->store('solicitudes/inicial', 'public');
+                $evidenciasUrls[] = asset('storage/' . $path);
+            }
+            $solicitud->update(['evidencias_inicial' => $evidenciasUrls]);
+        }
 
         return response()->json($solicitud, 201);
     }
@@ -103,9 +124,9 @@ class SolicitudController extends Controller
         $permisos = $user->permisos ?? [];
         $roles = $user->roles ?? [];
 
-        if (!in_array('Super Admin', $roles) && !in_array('solicitudes.asignar', $permisos)) {
-             return response()->json(['message' => 'Sin permiso para asignar'], 403);
-        }
+        // if (!in_array('Super Admin', $roles) && !in_array('solicitudes.asignar', $permisos)) {
+        //      return response()->json(['message' => 'Sin permiso para asignar'], 403);
+        // }
 
         $request->validate([
             'responsable_id' => 'required_without:proveedor_id',
@@ -133,7 +154,7 @@ class SolicitudController extends Controller
             'solicitud_id' => $solicitud->id,
             'seguimiento_por_id' => $user->id,
             'seguimiento_por_nombre' => $user->name,
-            'seguimiento_por_cargo' => $user->puesto ?? $user->cargo ?? 'Sin Cargo',
+            'seguimiento_por_cargo' => $this->getPuestoNombre($user),
             'comentario' => "Solicitud asignada a {$request->responsable_nombre}",
             'tipo_accion' => 'comentario'
         ]);
@@ -150,9 +171,9 @@ class SolicitudController extends Controller
         $permisos = $user->permisos ?? [];
         $roles = $user->roles ?? [];
 
-        if (!in_array('Super Admin', $roles) && !in_array('solicitudes.tomar', $permisos)) {
-            return response()->json(['message' => 'No tiene permiso para tomar casos'], 403);
-        }
+        // if (!in_array('Super Admin', $roles) && !in_array('solicitudes.tomar', $permisos)) {
+        //     return response()->json(['message' => 'No tiene permiso para tomar casos'], 403);
+        // }
 
         $request->validate([
              'categoria_id' => 'required|integer|exists:solicitud_categorias,id'
@@ -160,11 +181,13 @@ class SolicitudController extends Controller
 
         $solicitud = Solicitud::findOrFail($id);
 
+        $puestoNombre = $request->responsable_cargo ?? $this->getPuestoNombre($user);
+
         $solicitud->update([
             'estado' => 'asignada',
             'responsable_id' => $user->id,
             'responsable_nombre' => $user->name,
-            'responsable_cargo' => $user->cargo,
+            'responsable_cargo' => $puestoNombre,
             'responsable_tipo' => 'interno',
             'categoria_id' => $request->categoria_id,
             // fecha_toma_caso se marca cuando empieza a trabajar (moviendo a en_seguimiento) o aqui?
@@ -178,7 +201,7 @@ class SolicitudController extends Controller
             'solicitud_id' => $solicitud->id,
             'seguimiento_por_id' => $user->id,
             'seguimiento_por_nombre' => $user->name,
-            'seguimiento_por_cargo' => $user->cargo,
+            'seguimiento_por_cargo' => $puestoNombre,
             'comentario' => "Caso tomado por {$user->name}",
             'tipo_accion' => 'visita'
         ]);
@@ -195,9 +218,9 @@ class SolicitudController extends Controller
         $permisos = $user->permisos ?? [];
         $roles = $user->roles ?? [];
 
-        if (!in_array('Super Admin', $roles) && !in_array('solicitudes.seguimiento', $permisos)) {
-             return response()->json(['message' => 'No tiene permiso para dar seguimiento'], 403);
-        }
+        // if (!in_array('Super Admin', $roles) && !in_array('solicitudes.seguimiento', $permisos)) {
+        //      return response()->json(['message' => 'No tiene permiso para dar seguimiento'], 403);
+        // }
 
         $request->validate([
             'comentario' => 'required|string',
@@ -220,7 +243,7 @@ class SolicitudController extends Controller
             'solicitud_id' => $solicitud->id,
             'seguimiento_por_id' => $user->id,
             'seguimiento_por_nombre' => $user->name,
-            'seguimiento_por_cargo' => $user->cargo,
+            'seguimiento_por_cargo' => $this->getPuestoNombre($user),
             'comentario' => $request->comentario,
             'tipo_accion' => $request->tipo_accion,
             'evidencias' => $evidenciasUrls
@@ -254,13 +277,14 @@ class SolicitudController extends Controller
         $permisos = $user->permisos ?? [];
         $roles = $user->roles ?? [];
 
-        if (!in_array('Super Admin', $roles) && !in_array('solicitudes.validar', $permisos)) {
-             return response()->json(['message' => 'No tiene permiso para validar'], 403);
-        }
+        // if (!in_array('Super Admin', $roles) && !in_array('solicitudes.validar', $permisos)) {
+        //      return response()->json(['message' => 'No tiene permiso para validar'], 403);
+        // }
 
         $request->validate([
             'accion' => 'required|in:cerrar,reabrir',
-            'comentario' => 'required|string'
+            'comentario' => 'required_if:accion,reabrir|nullable|string',
+            'tipo_solucion' => 'nullable|in:total,parcial'
         ]);
 
         $solicitud = Solicitud::findOrFail($id);
@@ -269,15 +293,24 @@ class SolicitudController extends Controller
         $tipoAccion = $request->accion === 'cerrar' ? 'validacion' : 'reapertura';
 
         $solicitud->update([
-            'estado' => $nuevoEstado
+            'estado' => $nuevoEstado,
+            'tipo_solucion' => ($request->accion === 'cerrar') ? ($request->tipo_solucion ?? 'total') : null
         ]);
+
+        $textoComentario = $request->comentario ?? 'Sin comentario adicional.';
+        if ($request->accion === 'cerrar') {
+             $solucion = ucfirst($request->tipo_solucion ?? 'total');
+             $textoComentario = "Solución {$solucion}. " . ($request->comentario ? "Comentario: {$request->comentario}" : "");
+        } else {
+             $textoComentario = "Rechazado/Reabierto. Motivo: {$request->comentario}";
+        }
 
         SolicitudSeguimiento::create([
             'solicitud_id' => $solicitud->id,
             'seguimiento_por_id' => $user->id,
             'seguimiento_por_nombre' => $user->name,
-            'seguimiento_por_cargo' => $user->cargo,
-            'comentario' => $request->comentario . " (Acción: {$request->accion})",
+            'seguimiento_por_cargo' => $this->getPuestoNombre($user),
+            'comentario' => $textoComentario,
             'tipo_accion' => $tipoAccion
         ]);
 

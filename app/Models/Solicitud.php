@@ -26,13 +26,19 @@ class Solicitud extends Model
         'responsable_cargo',
         'responsable_tipo', // interno, externo
         'proveedor_id',
+        'proveedor_id',
         'fecha_asignacion',
         'fecha_toma_caso',
+        'evidencias_inicial',
+        'evidencias_final',
+        'tipo_solucion', // total, parcial
     ];
 
     protected $casts = [
         'fecha_asignacion' => 'datetime',
         'fecha_toma_caso' => 'datetime',
+        'evidencias_inicial' => 'array',
+        'evidencias_final' => 'array',
     ];
 
     public function seguimientos()

@@ -21,7 +21,7 @@ Route::middleware('sso')->prefix('solicitudes')->group(function () {
     Route::put('/{id}/tomar', [SolicitudController::class, 'take']);
     Route::post('/{id}/seguimiento', [SolicitudController::class, 'addSeguimiento']);
     Route::post('/{id}/validar', [SolicitudController::class, 'validateValidation']);
-    Route::post('/{id}/validar', [SolicitudController::class, 'validateValidation']);
+
 });
 
 // Usuarios (Proxy a App Madre) - Fuera del prefijo 'solicitudes' pero protegido por SSO

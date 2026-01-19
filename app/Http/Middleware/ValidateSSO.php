@@ -80,6 +80,12 @@ class ValidateSSO
             // pero como ya lo creamos arriba en dos ramas, lo refactorizamos un poco:
 
             $userData = array_merge($defaults, $userData);
+
+            // Mapper: permissions (English/Mother) -> permisos (Local/Spanish)
+            if (!empty($userData['permissions']) && empty($userData['permisos'])) {
+                $userData['permisos'] = $userData['permissions'];
+            }
+
             $user = new GenericUser($userData);
 
             // Establecer el usuario en la sesión actual de la solicitud
