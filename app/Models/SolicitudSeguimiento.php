@@ -18,7 +18,12 @@ class SolicitudSeguimiento extends Model
         'seguimiento_por_nombre',
         'seguimiento_por_cargo',
         'comentario',
+        'evidencias',
         'tipo_accion', // visita, comentario, evidencia, validacion, reapertura
+    ];
+
+    protected $casts = [
+        'evidencias' => 'array',
     ];
 
     public function solicitud()

@@ -53,6 +53,7 @@ return new class extends Migration
             $table->string('seguimiento_por_cargo')->nullable();
 
             $table->text('comentario')->nullable();
+            $table->json('evidencias')->nullable(); // URLs de fotos
             // Tipo de acción: visita, comentario, evidencia, validacion, reapertura
             $table->string('tipo_accion');
 

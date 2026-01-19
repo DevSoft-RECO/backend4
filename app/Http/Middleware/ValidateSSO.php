@@ -61,6 +61,27 @@ class ValidateSSO
                 $user = new GenericUser($userData);
             }
 
+            // ASEGURAR CAMPOS MINIMOS para evitar error "Undefined array key"
+            // GenericUser no tiene __get magic que devuelva null por defecto en arrays, falla si no existe la key.
+            // Por tanto, inyectamos valores vacíos si faltan.
+            $defaults = [
+                'cargo' => null,
+                'puesto' => null,
+                'roles' => [],
+                'permisos' => [],
+                'idagencia' => null,
+                'name' => 'Usuario',
+                'email' => ''
+            ];
+
+            // Reconstruimos el GenericUser con los defaults mezclados
+            // Ojo: GenericUser es inmutable en sus atributos (protected),
+            // asi que mejor modificamos $userData ANTES de crear el objeto
+            // pero como ya lo creamos arriba en dos ramas, lo refactorizamos un poco:
+
+            $userData = array_merge($defaults, $userData);
+            $user = new GenericUser($userData);
+
             // Establecer el usuario en la sesión actual de la solicitud
             Auth::setUser($user);
 

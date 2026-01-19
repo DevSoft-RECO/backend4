@@ -32,8 +32,16 @@ class SolicitudController extends Controller
              // Asumimos ve todo por ahora
         }
         // 3. Solicitante normal
-        else {
-             $query->where('agencia_id', $agencia_id);
+        if ($request->has('mis_asignaciones') && $request->mis_asignaciones == 'true') {
+            $query->where('responsable_id', $user->id);
+            // Si es 'mis asignaciones', ignoramos la restricción de agencia para que vean lo asignado incluso si es de otra agencia (casos especiales)
+            // O mantenemos la lógica base. Por ahora, 'where responsable_id' es suficiente filtro.
+        } else {
+            // Lógica normal de permisos por rol/agencia si NO es mi bandeja
+            // (Ya aplicada arriba parcialmente, pero refinamos)
+            if (!in_array('informatica_jefe', $roles) && $user->cargo !== 'Jefe de Informática' && !in_array('informatica', $roles)) {
+                 $query->where('agencia_id', $agencia_id);
+            }
         }
 
         if ($request->has('estado') && $request->estado) {
@@ -61,7 +69,6 @@ class SolicitudController extends Controller
         $request->validate([
             'titulo' => 'required|string|max:255',
             'descripcion' => 'required|string',
-            'categoria_id' => 'nullable|integer'
         ]);
 
         $solicitud = Solicitud::create([
@@ -72,7 +79,7 @@ class SolicitudController extends Controller
             'creado_por_nombre' => $user->name,
             'creado_por_cargo' => $user->cargo ?? null,
             'agencia_id' => $user->idagencia ?? null,
-            'categoria_id' => $request->categoria_id,
+            // Categoria se asigna despues
         ]);
 
         return response()->json($solicitud, 201);
@@ -106,6 +113,7 @@ class SolicitudController extends Controller
             'responsable_cargo' => 'nullable',
             'responsable_tipo' => 'required|in:interno,externo',
             'proveedor_id' => 'required_if:responsable_tipo,externo',
+            'categoria_id' => 'required|integer|exists:solicitud_categorias,id',
         ]);
 
         $solicitud = Solicitud::findOrFail($id);
@@ -117,6 +125,7 @@ class SolicitudController extends Controller
             'responsable_cargo' => $request->responsable_cargo,
             'responsable_tipo' => $request->responsable_tipo,
             'proveedor_id' => $request->proveedor_id,
+            'categoria_id' => $request->categoria_id,
             'fecha_asignacion' => Carbon::now(),
         ]);
 
@@ -124,7 +133,7 @@ class SolicitudController extends Controller
             'solicitud_id' => $solicitud->id,
             'seguimiento_por_id' => $user->id,
             'seguimiento_por_nombre' => $user->name,
-            'seguimiento_por_cargo' => $user->cargo,
+            'seguimiento_por_cargo' => $user->puesto ?? $user->cargo ?? 'Sin Cargo',
             'comentario' => "Solicitud asignada a {$request->responsable_nombre}",
             'tipo_accion' => 'comentario'
         ]);
@@ -145,15 +154,24 @@ class SolicitudController extends Controller
             return response()->json(['message' => 'No tiene permiso para tomar casos'], 403);
         }
 
+        $request->validate([
+             'categoria_id' => 'required|integer|exists:solicitud_categorias,id'
+        ]);
+
         $solicitud = Solicitud::findOrFail($id);
 
         $solicitud->update([
-            'estado' => 'en_seguimiento',
+            'estado' => 'asignada',
             'responsable_id' => $user->id,
             'responsable_nombre' => $user->name,
             'responsable_cargo' => $user->cargo,
             'responsable_tipo' => 'interno',
-            'fecha_toma_caso' => Carbon::now(),
+            'categoria_id' => $request->categoria_id,
+            // fecha_toma_caso se marca cuando empieza a trabajar (moviendo a en_seguimiento) o aqui?
+            // El usuario dijo: "Toma el caso... Estado => Asignada".
+            // Pero proveedor: "Se registra Fecha toma caso... Estado => En seguimiento"
+            // Dejaremos fecha_toma_caso null por ahora o Now() si se considera tomado.
+            // Ajuste al requerimiento 2.2: "Estado -> Asignada"
         ]);
 
         SolicitudSeguimiento::create([
@@ -188,21 +206,40 @@ class SolicitudController extends Controller
 
         $solicitud = Solicitud::findOrFail($id);
 
+        // Subida de evidencias
+        $evidenciasUrls = [];
+        if ($request->hasFile('evidencias')) {
+            foreach ($request->file('evidencias') as $file) {
+                // store in public/solicitudes
+                $path = $file->store('solicitudes', 'public');
+                $evidenciasUrls[] = asset('storage/' . $path);
+            }
+        }
+
         $seguimiento = SolicitudSeguimiento::create([
             'solicitud_id' => $solicitud->id,
             'seguimiento_por_id' => $user->id,
             'seguimiento_por_nombre' => $user->name,
             'seguimiento_por_cargo' => $user->cargo,
             'comentario' => $request->comentario,
-            'tipo_accion' => $request->tipo_accion
+            'tipo_accion' => $request->tipo_accion,
+            'evidencias' => $evidenciasUrls
         ]);
 
+        // Estados
+        // Si estaba asignada y agregamos seguimiento -> pasa a en_seguimiento
         if ($solicitud->estado == 'asignada') {
-            $solicitud->update(['estado' => 'en_seguimiento']);
+            $solicitud->update([
+                'estado' => 'en_seguimiento',
+                'fecha_toma_caso' => $solicitud->fecha_toma_caso ?? Carbon::now()
+            ]);
         }
 
-        if ($request->boolean('solicitar_validacion')) {
-            $solicitud->update(['estado' => 'pendiente_validacion']);
+        // Si hay evidencias o el usuario marca "solicitar validacion" (o implicito por el flujo 3->4)
+        // El usuario dijo "Estado -> Pendiente de validación" cuando se cargan evidencias?
+        // "Información visible... Evidencias... Estado => Pendiente de validación"
+        if (!empty($evidenciasUrls) || $request->tipo_accion === 'evidencia') {
+             $solicitud->update(['estado' => 'pendiente_validacion']);
         }
 
         return response()->json($seguimiento, 201);
