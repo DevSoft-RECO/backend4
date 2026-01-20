@@ -88,6 +88,22 @@ class ValidateSSO
 
             $user = new GenericUser($userData);
 
+            // Sincronizar usuario en Base de Datos Local
+            // Esto asegura que User::find($id) devuelva el correo correcto para notificaciones
+            try {
+                \App\Models\User::updateOrCreate(
+                    ['id' => $userData['id']],
+                    [
+                        'name' => $userData['name'],
+                        'email' => $userData['email'] ?? null,
+                        // Agrega otros campos si son necesarios en la BD local
+                    ]
+                );
+            } catch (\Exception $e) {
+                // Si falla la sincronización DB (ej. conexión), no bloqueamos el request, solo loggeamos
+                \Log::error("Error sincronizando usuario local en ValidateSSO: " . $e->getMessage());
+            }
+
             // Establecer el usuario en la sesión actual de la solicitud
             Auth::setUser($user);
 

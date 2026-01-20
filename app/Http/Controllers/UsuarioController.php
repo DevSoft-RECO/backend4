@@ -21,11 +21,12 @@ class UsuarioController extends Controller
             return response()->json(['message' => 'Error de configuración o autenticación'], 500);
         }
 
-        // Cachear la respuesta por 5 minutos para performance
-        // Usamos el token como parte de la key si la respuesta depende de permisos,
-        // o una key global 'users_list' si todos ven lo mismo.
-        // Dado que es una lista general, usaremos una cache global pero corta.
+        // Si se solicita refresh, limpiar el caché
+        if ($request->query('refresh') === 'true') {
+            Cache::forget('users_list_proxy');
+        }
 
+        // Cachear la respuesta por 5 minutos para performance
         $users = Cache::remember('users_list_proxy', 300, function () use ($motherUrl, $token) {
             $response = Http::withToken($token)->get("{$motherUrl}/api/users");
 

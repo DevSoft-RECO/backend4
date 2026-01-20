@@ -8,6 +8,10 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Mail;
+use App\Mail\SolicitudAsignada;
+use App\Mail\SolicitudPendienteValidacion;
+use App\Models\User;
 
 class SolicitudController extends Controller
 {
@@ -86,8 +90,8 @@ class SolicitudController extends Controller
             'estado' => 'reportada',
             'creado_por_id' => $user->id,
             'creado_por_nombre' => $user->name,
+            'creado_por_email' => $user->email ?? null,
             'creado_por_cargo' => $this->getPuestoNombre($user),
-            'agencia_id' => $user->idagencia ?? null,
             'agencia_id' => $user->idagencia ?? null,
             // Categoria se asigna despues
         ]);
@@ -112,6 +116,23 @@ class SolicitudController extends Controller
     public function show(Request $request, $id)
     {
         $solicitud = Solicitud::with('seguimientos')->findOrFail($id);
+        $user = Auth::user();
+        $roles = $user->roles ?? [];
+
+        // Verificar autorización: Solo puede ver si:
+        // 1. Es el creador de la solicitud
+        // 2. Es el responsable asignado
+        // 3. Es Super Admin
+        $esCreador = $solicitud->creado_por_id == $user->id;
+        $esResponsable = $solicitud->responsable_id == $user->id;
+        $esSuperAdmin = in_array('Super Admin', $roles);
+
+        if (!$esCreador && !$esResponsable && !$esSuperAdmin) {
+            return response()->json([
+                'message' => 'No tiene permisos para ver esta solicitud'
+            ], 403);
+        }
+
         return response()->json($solicitud);
     }
 
@@ -131,6 +152,7 @@ class SolicitudController extends Controller
         $request->validate([
             'responsable_id' => 'required_without:proveedor_id',
             'responsable_nombre' => 'required_with:responsable_id',
+            'responsable_email' => 'nullable|email',
             'responsable_cargo' => 'nullable',
             'responsable_tipo' => 'required|in:interno,externo',
             'proveedor_id' => 'required_if:responsable_tipo,externo',
@@ -143,6 +165,7 @@ class SolicitudController extends Controller
             'estado' => 'asignada',
             'responsable_id' => $request->responsable_id,
             'responsable_nombre' => $request->responsable_nombre,
+            'responsable_email' => $request->responsable_email,
             'responsable_cargo' => $request->responsable_cargo,
             'responsable_tipo' => $request->responsable_tipo,
             'proveedor_id' => $request->proveedor_id,
@@ -158,6 +181,20 @@ class SolicitudController extends Controller
             'comentario' => "Solicitud asignada a {$request->responsable_nombre}",
             'tipo_accion' => 'comentario'
         ]);
+
+        // Enviar correo al responsable
+        if ($solicitud->responsable_email) {
+            try {
+                \Log::info("Intentando enviar correo a: " . $solicitud->responsable_email);
+                Mail::to($solicitud->responsable_email)->send(new SolicitudAsignada($solicitud));
+                \Log::info("Correo enviado exitosamente a: " . $solicitud->responsable_email);
+            } catch (\Exception $e) {
+                \Log::error("Error enviando correo de asignación: " . $e->getMessage());
+                \Log::error($e->getTraceAsString());
+            }
+        } else {
+            \Log::info("No se envió correo: Email del responsable no proporcionado. ID: " . $solicitud->responsable_id);
+        }
 
         return response()->json($solicitud);
     }
@@ -263,6 +300,19 @@ class SolicitudController extends Controller
         // "Información visible... Evidencias... Estado => Pendiente de validación"
         if (!empty($evidenciasUrls) || $request->tipo_accion === 'evidencia') {
              $solicitud->update(['estado' => 'pendiente_validacion']);
+
+             // Enviar correo al solicitante para validar
+             if ($solicitud->creado_por_email) {
+                 try {
+                    \Log::info("Intentando enviar correo de validación a: " . $solicitud->creado_por_email);
+                    Mail::to($solicitud->creado_por_email)->send(new SolicitudPendienteValidacion($solicitud));
+                    \Log::info("Correo de validación enviado exitosamente.");
+                 } catch (\Exception $e) {
+                    \Log::error("Error enviando correo validación: " . $e->getMessage());
+                 }
+             } else {
+                 \Log::info("No se envió correo de validación: Email del creador no disponible. ID: " . $solicitud->creado_por_id);
+             }
         }
 
         return response()->json($seguimiento, 201);

@@ -20,6 +20,11 @@ class PuestoController extends Controller
             return response()->json(['message' => 'Error de configuración o autenticación'], 500);
         }
 
+        // Si se solicita refresh, limpiar el caché
+        if ($request->query('refresh') === 'true') {
+            Cache::forget('puestos_list_proxy');
+        }
+
         // Cachear lista de puestos por 1 hora (menos volátil que usuarios)
         $puestos = Cache::remember('puestos_list_proxy', 3600, function () use ($motherUrl, $token) {
             $response = Http::withToken($token)->get("{$motherUrl}/api/puestos");
