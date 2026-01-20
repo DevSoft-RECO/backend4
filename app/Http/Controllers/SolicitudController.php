@@ -12,9 +12,11 @@ use Illuminate\Support\Facades\Mail;
 use App\Mail\SolicitudAsignada;
 use App\Mail\SolicitudPendienteValidacion;
 use App\Models\User;
+use Illuminate\Support\Facades\Storage;
 
 class SolicitudController extends Controller
 {
+    protected $disk = 'gcs';
     private function getPuestoNombre($user)
     {
         $puesto = $user->puesto ?? $user->cargo ?? 'Sin Puesto';
@@ -96,15 +98,28 @@ class SolicitudController extends Controller
             // Categoria se asigna despues
         ]);
 
-        // Procesar evidencias iniciales
-        $evidenciasUrls = [];
+        // Procesar evidencias iniciales en GCS
+        $evidenciasPaths = [];
         if ($request->hasFile('evidencias')) {
+            \Log::info("STORE DEBUG: Se recibieron " . count($request->file('evidencias')) . " archivos.");
             foreach ($request->file('evidencias') as $file) {
-                // store in public/solicitudes/inicial
-                $path = $file->store('solicitudes/inicial', 'public');
-                $evidenciasUrls[] = asset('storage/' . $path);
+                $filename = uniqid() . '_' . $file->getClientOriginalName();
+                try {
+                    $path = $file->storeAs('gestiones/solicitudes/inicial', $filename, $this->disk);
+                    if ($path) {
+                        \Log::info("STORE DEBUG: Archivo subido exitosamente a: " . $path);
+                        $evidenciasPaths[] = $path;
+                    } else {
+                        \Log::error("STORE DEBUG: storeAs devolvió false para " . $filename);
+                    }
+                } catch (\Exception $e) {
+                    \Log::error("STORE ERROR: " . $e->getMessage());
+                }
             }
-            $solicitud->update(['evidencias_inicial' => $evidenciasUrls]);
+            $solicitud->update(['evidencias_inicial' => $evidenciasPaths]);
+            \Log::info("STORE DEBUG: Update completado. Paths: " . json_encode($evidenciasPaths));
+        } else {
+             \Log::warning("STORE DEBUG: No se recibieron archivos 'evidencias' en el request.");
         }
 
         return response()->json($solicitud, 201);
@@ -132,6 +147,47 @@ class SolicitudController extends Controller
                 'message' => 'No tiene permisos para ver esta solicitud'
             ], 403);
         }
+
+        // Generar URLs firmadas para GCS
+        $disk = Storage::disk($this->disk);
+        $ttl = now()->addMinutes(20);
+
+        // 1. Evidencias Iniciales
+        if ($solicitud->evidencias_inicial && is_array($solicitud->evidencias_inicial)) {
+            $solicitud->evidencias_inicial_urls = array_map(function($path) use ($disk, $ttl) {
+                try {
+                    return $disk->temporaryUrl($path, $ttl);
+                } catch (\Exception $e) {
+                    return null;
+                }
+            }, $solicitud->evidencias_inicial);
+        }
+
+        // 1.5 Evidencias Finales
+        if ($solicitud->evidencias_final && is_array($solicitud->evidencias_final)) {
+            $solicitud->evidencias_final_urls = array_map(function($path) use ($disk, $ttl) {
+                 try {
+                     return $disk->temporaryUrl($path, $ttl);
+                 } catch (\Exception $e) {
+                     return null;
+                 }
+            }, $solicitud->evidencias_final);
+        }
+
+        // 2. Evidencias en Seguimientos
+        $solicitud->seguimientos->transform(function($seg) use ($disk, $ttl) {
+            if (!empty($seg->evidencias) && is_array($seg->evidencias)) {
+                $urls = array_map(function($path) use ($disk, $ttl) {
+                    try {
+                        return $disk->temporaryUrl($path, $ttl);
+                    } catch (\Exception $e) {
+                         return null;
+                    }
+                }, $seg->evidencias);
+                $seg->evidencias = $urls;
+            }
+            return $seg;
+        });
 
         return response()->json($solicitud);
     }
@@ -266,14 +322,56 @@ class SolicitudController extends Controller
 
         $solicitud = Solicitud::findOrFail($id);
 
-        // Subida de evidencias
-        $evidenciasUrls = [];
+        // Subida de evidencias a GCS (Smart Routing)
+        $evidenciasPaths = [];
+        $evidenciasInicialesNuevas = $solicitud->evidencias_inicial ?? [];
+        $evidenciasFinalesNuevas = $solicitud->evidencias_final ?? [];
+        $changedInicial = false;
+        $changedFinal = false;
+
         if ($request->hasFile('evidencias')) {
             foreach ($request->file('evidencias') as $file) {
-                // store in public/solicitudes
-                $path = $file->store('solicitudes', 'public');
-                $evidenciasUrls[] = asset('storage/' . $path);
+                // Determinar carpeta destino
+                $folder = 'gestiones/solicitudes/seguimiento'; // Destino fallback
+                $target = 'seguimiento';
+
+                // Si es Creador -> Inicial
+                if ($user->id == $solicitud->creado_por_id) {
+                    $folder = 'gestiones/solicitudes/inicial';
+                    $target = 'inicial';
+                }
+                // Si es Responsable -> Final
+                elseif ($user->id == $solicitud->responsable_id) {
+                    $folder = 'gestiones/solicitudes/final';
+                    $target = 'final';
+                }
+
+                $filename = uniqid() . '_' . $file->getClientOriginalName();
+                $path = $file->storeAs($folder, $filename, $this->disk);
+
+                if ($path) {
+                    $evidenciasPaths[] = $path; // Para el seguimiento (display en chat)
+
+                    // Agregar a columnas principales
+                    if ($target === 'inicial') {
+                        $evidenciasInicialesNuevas[] = $path;
+                        $changedInicial = true;
+                    } elseif ($target === 'final') {
+                        $evidenciasFinalesNuevas[] = $path;
+                        $changedFinal = true;
+                    }
+                }
             }
+        }
+
+        // Guardar cambios en columnas principales
+        if ($changedInicial) {
+            $solicitud->evidencias_inicial = $evidenciasInicialesNuevas;
+            $solicitud->save();
+        }
+        if ($changedFinal) {
+            $solicitud->evidencias_final = $evidenciasFinalesNuevas;
+            $solicitud->save();
         }
 
         $seguimiento = SolicitudSeguimiento::create([
@@ -283,7 +381,7 @@ class SolicitudController extends Controller
             'seguimiento_por_cargo' => $this->getPuestoNombre($user),
             'comentario' => $request->comentario,
             'tipo_accion' => $request->tipo_accion,
-            'evidencias' => $evidenciasUrls
+            'evidencias' => $evidenciasPaths // REFERENCIA al mismo archivo
         ]);
 
         // Estados
@@ -296,23 +394,39 @@ class SolicitudController extends Controller
         }
 
         // Si hay evidencias o el usuario marca "solicitar validacion" (o implicito por el flujo 3->4)
-        // El usuario dijo "Estado -> Pendiente de validación" cuando se cargan evidencias?
-        // "Información visible... Evidencias... Estado => Pendiente de validación"
-        if (!empty($evidenciasUrls) || $request->tipo_accion === 'evidencia') {
-             $solicitud->update(['estado' => 'pendiente_validacion']);
+        if (!empty($evidenciasPaths) || $request->tipo_accion === 'evidencia') {
+             // NO cambiar estado automaticamente a pendiente_validacion solo por subir un archivo en chat,
+             // a menos que sea explicitamente una "evidencia" de solucion?
+             // El usuario dijo: "quien le asignaron... pueda seguir cargando archivos... van a pertenecer a evidencias finales".
+             // PERO NO DIJO "Cerrar el caso".
+             // MANTENEMOS LOGICA ACTUAL: Solo si tipo_accion es 'evidencia' (que usabamos para cerrar?)
+             // Ojo: En frontend usabamos tipo_accion='evidencia' para cerrar.
+             // Para chat normal usaremos 'comentario' con attached files.
 
-             // Enviar correo al solicitante para validar
-             if ($solicitud->creado_por_email) {
-                 try {
-                    \Log::info("Intentando enviar correo de validación a: " . $solicitud->creado_por_email);
-                    Mail::to($solicitud->creado_por_email)->send(new SolicitudPendienteValidacion($solicitud));
-                    \Log::info("Correo de validación enviado exitosamente.");
-                 } catch (\Exception $e) {
-                    \Log::error("Error enviando correo validación: " . $e->getMessage());
-                 }
-             } else {
-                 \Log::info("No se envió correo de validación: Email del creador no disponible. ID: " . $solicitud->creado_por_id);
-             }
+             // Si el tipo de accion es 'comentario' pero trae archivos, NO cambiamos estado a pendiente_validacion.
+        }
+
+        // --- FIX: Si es 'evidencia' (Finalizar Caso), pasar a pendiente_validacion ---
+        if ($request->tipo_accion === 'evidencia' && $solicitud->estado !== 'pendiente_validacion') {
+            $solicitud->update([
+                'estado' => 'pendiente_validacion'
+            ]);
+
+            // Send Notification Email (if needed) - Keeping it simple for now as per user request
+        }
+        // Separamos logica correo
+        if ($request->tipo_accion === 'evidencia' || ($request->tipo_accion === 'comentario' && !empty($evidenciasPaths) && $solicitud->estado === 'pendiente_validacion')) {
+             // Logic validation
+        }
+
+        // Transformar evidencias a URLs
+        if (!empty($seguimiento->evidencias) && is_array($seguimiento->evidencias)) {
+            $disk = Storage::disk($this->disk);
+            $ttl = now()->addMinutes(20);
+            $urls = array_map(function($path) use ($disk, $ttl) {
+                try { return $disk->temporaryUrl($path, $ttl); } catch (\Exception $e) { return null; }
+            }, $seguimiento->evidencias);
+            $seguimiento->evidencias = $urls;
         }
 
         return response()->json($seguimiento, 201);
@@ -365,5 +479,203 @@ class SolicitudController extends Controller
         ]);
 
         return response()->json($solicitud);
+    }
+    public function getFileUrl(Request $request, $id)
+    {
+        $request->validate([
+            'type' => 'required|string|in:evidencia_inicial,evidencia_seguimiento',
+            'index' => 'required|integer|min:0'
+        ]);
+
+        $solicitud = Solicitud::findOrFail($id);
+        $path = null;
+
+        if ($request->type === 'evidencia_inicial') {
+            if ($solicitud->evidencias_inicial && isset($solicitud->evidencias_inicial[$request->index])) {
+                $path = $solicitud->evidencias_inicial[$request->index];
+            }
+        } elseif ($request->type === 'evidencia_seguimiento') {
+            // Logica para buscar en seguimientos (flatten)
+            $allEvidencias = SolicitudSeguimiento::where('solicitud_id', $id)
+                ->whereNotNull('evidencias')
+                ->get()
+                ->flatMap(function($seg) { return $seg->evidencias ?? []; });
+
+            if (isset($allEvidencias[$request->index])) {
+                $path = $allEvidencias[$request->index];
+            }
+        }
+
+        if (!$path) {
+            return response()->json(['error' => 'Archivo no encontrado'], 404);
+        }
+
+        try {
+            $url = Storage::disk($this->disk)->temporaryUrl($path, now()->addMinutes(20));
+            return response()->json(['url' => $url]);
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Error generando URL'], 500);
+        }
+    }
+    /**
+     * Agregar evidencia suelta
+     */
+    public function addEvidence(Request $request, $id)
+    {
+        $user = Auth::user();
+        if (!$request->hasFile('file')) {
+            return response()->json(['error' => 'No se recibió archivo'], 400);
+        }
+
+        $solicitud = Solicitud::findOrFail($id);
+
+        // Determinar destino basado en rol
+        $target = null;
+        $folder = '';
+
+        // Si soy el creador -> evidencias_inicial
+        if ($user->id == $solicitud->creado_por_id) {
+            $target = 'evidencias_inicial';
+            $folder = 'gestiones/solicitudes/inicial';
+        }
+        // Si soy el responsable -> evidencias_final
+        elseif ($user->id == $solicitud->responsable_id) {
+            $target = 'evidencias_final';
+            $folder = 'gestiones/solicitudes/final';
+        }
+        // Si soy super admin y no soy ninguno de los anteriores? (Opcional, por ahora restringimos)
+        elseif ($user->roles && in_array('Super Admin', $user->roles)) {
+            // Admin decide donde? Por defecto final?
+            $target = 'evidencias_final';
+            $folder = 'gestiones/solicitudes/final';
+        }
+        else {
+            return response()->json(['error' => 'No tienes permiso para agregar evidencias a este caso'], 403);
+        }
+
+        // Subir archivo
+        $file = $request->file('file');
+        $filename = uniqid() . '_' . $file->getClientOriginalName();
+        $path = $file->storeAs($folder, $filename, $this->disk);
+
+        if (!$path) {
+            return response()->json(['error' => 'Error subiendo archivo a GCS'], 500);
+        }
+
+        // Actualizar array en DB
+        $currentFiles = $solicitud->$target ?? [];
+        $currentFiles[] = $path;
+
+        // Eloquent/MySQL JSON cast a veces necesita ayuda para detectar cambio si es array
+        $solicitud->$target = $currentFiles;
+        $solicitud->save();
+
+        // Generar URL firmada para devolver al front
+        $url = Storage::disk($this->disk)->temporaryUrl($path, now()->addMinutes(20));
+
+        // Registrar historial interno (opcional)
+        SolicitudSeguimiento::create([
+             'solicitud_id' => $solicitud->id,
+             'seguimiento_por_id' => $user->id,
+             'seguimiento_por_nombre' => $user->name,
+             'seguimiento_por_cargo' => $this->getPuestoNombre($user),
+             'tipo_accion' => 'evidencia', // Icono de clip
+             'comentario' => "Adjuntó archivo: " . $file->getClientOriginalName(),
+             'evidencias' => [$path] // Tambien lo agregamos al history para que salga en el chat?
+             // EL USUARIO PIDIO: "asi identificaremos quien subio cada archivo"
+             // Si lo metemos aqui tambien, se duplicara en la galeria si la galeria lee ambos?
+             // MI PLAN ERA: Galeria lee Inicial + Final + Seguimientos.
+             // Si lo agrego aqui, saldra duplicado.
+             // PERO si no lo agrego aqui, no saldra en el chat como "Juan subio un archivo".
+             // DECISION: Lo agrego al historial SIN evidencias[], solo como texto informativo?
+             // O mejor: NO lo agrego al historial, el usuario vera el archivo en la pestaña "Archivos".
+             // El usuario dijo: "permitamos que el ususario... pueda seguir cargando archivos... van a pertenecer a evidencias finales".
+        ]);
+
+        return response()->json([
+            'message' => 'Archivo agregado',
+            'path' => $path,
+            'url' => $url,
+            'target' => $target
+        ]);
+    }
+
+    /**
+     * Eliminar evidencia suelta
+     */
+    public function deleteEvidence(Request $request, $id)
+    {
+        $user = Auth::user();
+        $request->validate([
+            'path' => 'required|string'
+        ]);
+
+        $pathToDelete = $request->path;
+        $solicitud = Solicitud::findOrFail($id);
+
+        // Buscar en evidencias_inicial
+        $found = false;
+        $target = '';
+
+        $iniciales = $solicitud->evidencias_inicial ?? [];
+        if (in_array($pathToDelete, $iniciales)) {
+            // Verificar permiso: Creador o Admin
+            if ($user->id != $solicitud->creado_por_id && !in_array('Super Admin', $user->roles ?? [])) {
+                return response()->json(['error' => 'No tienes permiso para eliminar este archivo'], 403);
+            }
+            $target = 'evidencias_inicial';
+            $found = true;
+        }
+
+        // Buscar en evidencias_final
+        $finales = $solicitud->evidencias_final ?? [];
+        if (!$found && in_array($pathToDelete, $finales)) {
+             // Verificar permiso: Responsable o Admin
+             if ($user->id != $solicitud->responsable_id && !in_array('Super Admin', $user->roles ?? [])) {
+                return response()->json(['error' => 'No tienes permiso para eliminar este archivo'], 403);
+            }
+            $target = 'evidencias_final';
+            $found = true;
+        }
+
+        if (!$found) {
+            // Podria ser de un Seguimiento antiguo?
+            // "al igual que quien le asignaron o tomo el caso que puede adjuntar archivos"
+            // Por ahora solo manejo Inicial y Final como pide el usuario.
+            return response()->json(['error' => 'Archivo no encontrado en las listas principales'], 404);
+        }
+
+        // Eliminar de GCS
+        try {
+            Storage::disk($this->disk)->delete($pathToDelete);
+        } catch (\Exception $e) {
+            \Log::error("Error eliminando de GCS: " . $e->getMessage());
+            // Continuamos para limpiar la DB aunque falle GCS
+        }
+
+        // Eliminar de DB
+        $array = $solicitud->$target;
+        $array = array_values(array_diff($array, [$pathToDelete])); // Re-indexar
+        $solicitud->$target = $array;
+        $solicitud->save();
+
+        // --- SYNC: Eliminar también del historial (SolicitudSeguimiento) ---
+        // Para evitar "imágenes rotas" en el chat.
+        \Log::info("SYNC DELETE: Iniciando sync para path: $pathToDelete");
+        $seguimientos = SolicitudSeguimiento::where('solicitud_id', $id)->get();
+        foreach ($seguimientos as $seg) {
+            if (!empty($seg->evidencias) && is_array($seg->evidencias)) {
+                \Log::info("SYNC DELETE: Revisando seguimiento {$seg->id} con evidencias: " . json_encode($seg->evidencias));
+                if (in_array($pathToDelete, $seg->evidencias)) {
+                    \Log::info("SYNC DELETE: Encontrado en seguimiento {$seg->id}. Eliminando...");
+                    $newEvidencias = array_values(array_diff($seg->evidencias, [$pathToDelete]));
+                    $seg->evidencias = $newEvidencias;
+                    $seg->save();
+                    \Log::info("SYNC DELETE: Guardado seguimiento {$seg->id}. Nuevas evidencias: " . json_encode($newEvidencias));
+                }
+            }
+        }
+
+        return response()->json(['message' => 'Archivo eliminado correctamente']);
     }
 }

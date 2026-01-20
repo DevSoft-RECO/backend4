@@ -21,6 +21,11 @@ Route::middleware('sso')->prefix('solicitudes')->group(function () {
     Route::put('/{id}/tomar', [SolicitudController::class, 'take']);
     Route::post('/{id}/seguimiento', [SolicitudController::class, 'addSeguimiento']);
     Route::post('/{id}/validar', [SolicitudController::class, 'validateValidation']);
+    Route::get('/{id}/file-url', [SolicitudController::class, 'getFileUrl']);
+
+    // Gestión de Evidencias (Subir/Eliminar sueltas)
+    Route::post('/{id}/evidence', [SolicitudController::class, 'addEvidence']);
+    Route::delete('/{id}/evidence', [SolicitudController::class, 'deleteEvidence']);
 
 });
 
