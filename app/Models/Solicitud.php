@@ -23,7 +23,8 @@ class Solicitud extends Model
         'area', // Nueva columna
         'creado_por_telefono', // Nueva columna
         'agencia_id',
-        'categoria_id',
+        'subcategoria_id', // Renamed from categoria_id
+        'categoria_general_id', // New column
         'responsable_id',
         'responsable_nombre',
         'responsable_email',
@@ -48,5 +49,15 @@ class Solicitud extends Model
     public function seguimientos()
     {
         return $this->hasMany(SolicitudSeguimiento::class, 'solicitud_id');
+    }
+
+    public function subcategoria()
+    {
+        return $this->belongsTo(SolicitudSubcategoria::class, 'subcategoria_id');
+    }
+
+    public function categoriaGeneral()
+    {
+        return $this->belongsTo(SolicitudCategoriaGeneral::class, 'categoria_general_id');
     }
 }
