@@ -62,6 +62,10 @@ class SolicitudController extends Controller
             $query->where('estado', $request->estado);
         }
 
+        if ($request->has('categoria_general_id')) {
+            $query->where('categoria_general_id', $request->categoria_general_id);
+        }
+
         $solicitudes = $query->with('seguimientos')->orderBy('id', 'desc')->paginate(20);
 
         return response()->json($solicitudes);
