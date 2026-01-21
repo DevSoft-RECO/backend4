@@ -20,11 +20,14 @@ class Solicitud extends Model
         'creado_por_nombre',
         'creado_por_email',
         'creado_por_cargo',
+        'area', // Nueva columna
+        'creado_por_telefono', // Nueva columna
         'agencia_id',
         'categoria_id',
         'responsable_id',
         'responsable_nombre',
         'responsable_email',
+        'responsable_telefono', // Nueva columna
         'responsable_cargo',
         'responsable_tipo', // interno, externo
         'proveedor_id',

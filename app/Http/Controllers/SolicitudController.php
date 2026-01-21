@@ -11,7 +11,6 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Mail;
 use App\Mail\SolicitudAsignada;
 use App\Mail\SolicitudPendienteValidacion;
-use App\Models\User;
 use Illuminate\Support\Facades\Storage;
 
 class SolicitudController extends Controller
@@ -63,7 +62,7 @@ class SolicitudController extends Controller
             $query->where('estado', $request->estado);
         }
 
-        $solicitudes = $query->with('seguimientos')->latest()->paginate(20);
+        $solicitudes = $query->with('seguimientos')->orderBy('id', 'desc')->paginate(20);
 
         return response()->json($solicitudes);
     }
@@ -94,6 +93,8 @@ class SolicitudController extends Controller
             'creado_por_nombre' => $user->name,
             'creado_por_email' => $user->email ?? null,
             'creado_por_cargo' => $this->getPuestoNombre($user),
+            'creado_por_telefono' => $user->telefono ?? null, // Nuevo campo
+            'area' => $request->area ?? $user->area ?? null,  // Nuevo campo (Prioridad request, fallback user)
             'agencia_id' => $user->idagencia ?? null,
             // Categoria se asigna despues
         ]);
@@ -209,6 +210,7 @@ class SolicitudController extends Controller
             'responsable_id' => 'required_without:proveedor_id',
             'responsable_nombre' => 'required_with:responsable_id',
             'responsable_email' => 'nullable|email',
+            'responsable_telefono' => 'nullable|string', // Nuevo campo
             'responsable_cargo' => 'nullable',
             'responsable_tipo' => 'required|in:interno,externo',
             'proveedor_id' => 'required_if:responsable_tipo,externo',
@@ -222,6 +224,7 @@ class SolicitudController extends Controller
             'responsable_id' => $request->responsable_id,
             'responsable_nombre' => $request->responsable_nombre,
             'responsable_email' => $request->responsable_email,
+            'responsable_telefono' => $request->responsable_telefono, // Nuevo campo
             'responsable_cargo' => $request->responsable_cargo,
             'responsable_tipo' => $request->responsable_tipo,
             'proveedor_id' => $request->proveedor_id,
