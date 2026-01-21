@@ -24,7 +24,7 @@ class SolicitudPendienteValidacion extends Mailable
     {
         $this->solicitud = $solicitud;
         $frontendUrl = env('APP_URL_FRONTEND', 'http://localhost:5173');
-        $this->urlDetalle = "{$frontendUrl}/admin/solicitudes/{$solicitud->id}";
+        $this->urlDetalle = "{$frontendUrl}/admin/solicitudes/trabajar/{$solicitud->id}";
     }
 
     /**

@@ -415,7 +415,19 @@ class SolicitudController extends Controller
                 'estado' => 'pendiente_validacion'
             ]);
 
-            // Send Notification Email (if needed) - Keeping it simple for now as per user request
+            // Send Notification Email
+            if ($solicitud->creado_por_email) {
+                try {
+                    \Log::info("Enviando correo de validación a creador: " . $solicitud->creado_por_email);
+                    Mail::to($solicitud->creado_por_email)->send(new SolicitudPendienteValidacion($solicitud));
+                    \Log::info("Correo de validación enviado exitosamente.");
+                } catch (\Exception $e) {
+                    \Log::error("Error enviando correo de validación: " . $e->getMessage());
+                    \Log::error($e->getTraceAsString());
+                }
+            } else {
+                \Log::warning("No se envió correo de validación: Creador sin email. Solicitud ID: " . $solicitud->id);
+            }
         }
         // Separamos logica correo
         if ($request->tipo_accion === 'evidencia' || ($request->tipo_accion === 'comentario' && !empty($evidenciasPaths) && $solicitud->estado === 'pendiente_validacion')) {
