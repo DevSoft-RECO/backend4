@@ -8,11 +8,19 @@ use App\Http\Controllers\SolicitudController;
 use App\Http\Controllers\SolicitudCategoriaController;
 
 Route::middleware('sso')->prefix('solicitudes')->group(function () {
-    // Categorias (Must be before /{id})
-    Route::get('/categorias', [SolicitudCategoriaController::class, 'index']);
-    Route::post('/categorias', [SolicitudCategoriaController::class, 'store']);
-    Route::put('/categorias/{id}', [SolicitudCategoriaController::class, 'update']);
-    Route::delete('/categorias/{id}', [SolicitudCategoriaController::class, 'destroy']);
+    // Categorias Generales
+    Route::get('/categorias-generales', [App\Http\Controllers\SolicitudCategoriaGeneralController::class, 'index']);
+    Route::post('/categorias-generales', [App\Http\Controllers\SolicitudCategoriaGeneralController::class, 'store']);
+    Route::put('/categorias-generales/{id}', [App\Http\Controllers\SolicitudCategoriaGeneralController::class, 'update']);
+    Route::delete('/categorias-generales/{id}', [App\Http\Controllers\SolicitudCategoriaGeneralController::class, 'destroy']);
+
+    // Subcategorias (Antes Categorias)
+    Route::get('/subcategorias', [App\Http\Controllers\SolicitudSubcategoriaController::class, 'index']);
+    Route::post('/subcategorias', [App\Http\Controllers\SolicitudSubcategoriaController::class, 'store']);
+    Route::put('/subcategorias/{id}', [App\Http\Controllers\SolicitudSubcategoriaController::class, 'update']);
+    Route::delete('/subcategorias/{id}', [App\Http\Controllers\SolicitudSubcategoriaController::class, 'destroy']);
+
+    // Alias legacy or remove? Removing as per plan.
 
     Route::get('/', [SolicitudController::class, 'index']);
     Route::post('/', [SolicitudController::class, 'store']);

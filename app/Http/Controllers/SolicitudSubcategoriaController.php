@@ -2,21 +2,25 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\SolicitudCategoria;
+use App\Models\SolicitudSubcategoria;
 use Illuminate\Http\Request;
 
-class SolicitudCategoriaController extends Controller
+class SolicitudSubcategoriaController extends Controller
 {
     /**
-     * Listar categorias (Activas por defecto, o todas si se pide)
+     * Listar subcategorias (Activas por defecto, o todas si se pide)
      */
     public function index(Request $request)
     {
         // Middleware 'sso' ya valida al usuario
-        $query = SolicitudCategoria::query();
+        $query = SolicitudSubcategoria::with('categoriaGeneral');
 
         if ($request->boolean('solo_activas', true)) {
             $query->where('activa', true);
+        }
+
+        if ($request->has('categoria_general_id')) {
+            $query->where('categoria_general_id', $request->categoria_general_id);
         }
 
         return response()->json($query->get());
@@ -31,10 +35,11 @@ class SolicitudCategoriaController extends Controller
 
         $request->validate([
             'nombre' => 'required|string|max:255',
-            'descripcion' => 'nullable|string'
+            'descripcion' => 'nullable|string',
+            'categoria_general_id' => 'required|exists:solicitud_categorias_generales,id'
         ]);
 
-        $categoria = SolicitudCategoria::create($request->all());
+        $categoria = SolicitudSubcategoria::create($request->all());
         return response()->json($categoria, 201);
     }
 
@@ -43,7 +48,14 @@ class SolicitudCategoriaController extends Controller
      */
     public function update(Request $request, $id)
     {
-        $categoria = SolicitudCategoria::findOrFail($id);
+        $categoria = SolicitudSubcategoria::findOrFail($id);
+
+        $request->validate([
+            'nombre' => 'sometimes|required|string|max:255',
+            'descripcion' => 'nullable|string',
+            'categoria_general_id' => 'sometimes|exists:solicitud_categorias_generales,id'
+        ]);
+
         $categoria->update($request->all());
 
         return response()->json($categoria);
@@ -54,7 +66,7 @@ class SolicitudCategoriaController extends Controller
      */
     public function destroy(Request $request, $id)
     {
-        $categoria = SolicitudCategoria::findOrFail($id);
+        $categoria = SolicitudSubcategoria::findOrFail($id);
 
         // Check usage before delete? For now simple delete.
         $categoria->delete();
