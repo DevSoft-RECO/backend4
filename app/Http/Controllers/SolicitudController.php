@@ -220,7 +220,7 @@ class SolicitudController extends Controller
             'responsable_cargo' => 'nullable',
             'responsable_tipo' => 'required|in:interno,externo',
             'proveedor_id' => 'required_if:responsable_tipo,externo',
-            'categoria_id' => 'required|integer|exists:solicitud_categorias,id',
+            'categoria_id' => 'required|integer|exists:solicitud_subcategorias,id', // Frontend envia categoria_id pero es subcategoria
         ]);
 
         $solicitud = Solicitud::findOrFail($id);
@@ -234,7 +234,7 @@ class SolicitudController extends Controller
             'responsable_cargo' => $request->responsable_cargo,
             'responsable_tipo' => $request->responsable_tipo,
             'proveedor_id' => $request->proveedor_id,
-            'categoria_id' => $request->categoria_id,
+            'subcategoria_id' => $request->categoria_id, // Map to subcategoria_id
             'fecha_asignacion' => Carbon::now(),
         ]);
 
@@ -278,7 +278,7 @@ class SolicitudController extends Controller
         // }
 
         $request->validate([
-             'categoria_id' => 'required|integer|exists:solicitud_categorias,id'
+             'categoria_id' => 'required|integer|exists:solicitud_subcategorias,id'
         ]);
 
         $solicitud = Solicitud::findOrFail($id);
@@ -291,7 +291,7 @@ class SolicitudController extends Controller
             'responsable_nombre' => $user->name,
             'responsable_cargo' => $puestoNombre,
             'responsable_tipo' => 'interno',
-            'categoria_id' => $request->categoria_id,
+            'subcategoria_id' => $request->categoria_id, // Map to subcategoria_id
             // fecha_toma_caso se marca cuando empieza a trabajar (moviendo a en_seguimiento) o aqui?
             // El usuario dijo: "Toma el caso... Estado => Asignada".
             // Pero proveedor: "Se registra Fecha toma caso... Estado => En seguimiento"
