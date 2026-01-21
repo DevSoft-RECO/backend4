@@ -83,12 +83,15 @@ class SolicitudController extends Controller
         $request->validate([
             'titulo' => 'required|string|max:255',
             'descripcion' => 'required|string',
+            'categoria_general_id' => 'nullable|exists:solicitud_categorias_generales,id', // Validar si viene
         ]);
 
         $solicitud = Solicitud::create([
             'titulo' => $request->titulo,
             'descripcion' => $request->descripcion,
             'estado' => 'reportada',
+            'subcategoria_id' => null, // Se asigna despues (o null)
+            'categoria_general_id' => $request->categoria_general_id, // Asignar si viene
             'creado_por_id' => $user->id,
             'creado_por_nombre' => $user->name,
             'creado_por_email' => $user->email ?? null,
@@ -96,7 +99,6 @@ class SolicitudController extends Controller
             'creado_por_telefono' => $user->telefono ?? null, // Nuevo campo
             'area' => $request->area ?? $user->area ?? null,  // Nuevo campo (Prioridad request, fallback user)
             'agencia_id' => $user->idagencia ?? null,
-            // Categoria se asigna despues
         ]);
 
         // Procesar evidencias iniciales en GCS
