@@ -6,6 +6,10 @@ use Illuminate\Support\Facades\Route;
 // Asegúrate de que el middleware 'sso' esté registrado en bootstrap/app.php
 use App\Http\Controllers\SolicitudController;
 use App\Http\Controllers\SolicitudCategoriaController;
+use App\Http\Controllers\Sincronizacion\AgenciaController;
+use App\Http\Controllers\Sincronizacion\AgencySyncController;
+use App\Http\Controllers\Sincronizacion\PuestoController;
+use App\Http\Controllers\Sincronizacion\PuestoSyncController;
 
 Route::middleware('sso')->prefix('solicitudes')->group(function () {
     // Categorias Generales
@@ -39,4 +43,17 @@ Route::middleware('sso')->prefix('solicitudes')->group(function () {
 
 // Usuarios (Proxy a App Madre) - Fuera del prefijo 'solicitudes' pero protegido por SSO
 Route::middleware('sso')->get('/usuarios', [\App\Http\Controllers\UsuarioController::class, 'index']);
-Route::middleware('sso')->get('/puestos', [\App\Http\Controllers\PuestoController::class, 'index']);
+Route::middleware('sso')->get('/usuarios', [\App\Http\Controllers\UsuarioController::class, 'index']);
+Route::middleware('sso')->get('/puestos', [PuestoController::class, 'index']);
+
+// Asegúrate de que el middleware 'sso' esté registrado en bootstrap/app.php
+Route::middleware('sso')->group(function () {
+    // Agencias
+    Route::post('/sincronizar-agencias', [AgencySyncController::class, 'sync']);
+    Route::get('/agencias', [AgenciaController::class, 'index']);
+
+    // Puestos
+    Route::post('/sincronizar-puestos', [PuestoSyncController::class, 'sync']);
+    // Route::get('/puestos', ... ) ya está definido arriba globalmente
+
+});
