@@ -88,13 +88,55 @@ class ValidateSSO
 
             $user = new GenericUser($userData);
 
-            // Sincronización DB eliminada (Tabla users eliminada)
-            // try {
-            //     \App\Models\User::updateOrCreate(...)
-            // } catch ...
+            // Sincronización JIT (Just-In-Time) con base de datos local
+            try {
+                $userId = $userData['id'];
+                $cacheKey = "jit_sync_user_{$userId}";
+                $localUser = null;
 
-            // Establecer el usuario en la sesión actual de la solicitud
-            Auth::setUser($user);
+                // 1. Intentar obtener de caché (para evitar UPDATE masivo en cada request)
+                if (\Illuminate\Support\Facades\Cache::has($cacheKey)) {
+                    $localUser = \App\Models\User::find($userId);
+                }
+
+                // 2. Si no estaba en caché o no existe en DB, sincronizamos
+                if (!$localUser) {
+                     // Mapear campos del token a campos de la BD local
+                    $localUser = \App\Models\User::updateOrCreate(
+                        ['id' => $userId], // Buscamos por ID (PK)
+                        [
+                            'username' => $userData['username'] ?? $userData['email'], // Fallback si no hay username
+                            'name' => $userData['name'],
+                            'email' => $userData['email'],
+                            'telefono' => $userData['telefono'] ?? null,
+                            'puesto_id' => $userData['puesto_id'] ?? null,
+                            // Nota: El token a veces trae 'idagencia' o 'agencia_id', validamos ambos
+                            'agencia_id' => $userData['agencia_id'] ?? $userData['idagencia'] ?? null,
+                        ]
+                    );
+                    // Guardamos en caché por 10 minutos para no volver a hacer UPDATE
+                    \Illuminate\Support\Facades\Cache::put($cacheKey, true, now()->addMinutes(10));
+                }
+
+                // Inyectamos los Roles y Permisos (que viven en memoria/token) al modelo Eloquent
+                // Esto permite usar $request->user()->can('...') si se usa un Gate que lea esto,
+                // o simplemente acceder a $request->user()->roles como propiedad dinámica.
+                $localUser->roles = $userData['roles'] ?? [];
+                $localUser->permisos = $userData['permisos'] ?? [];
+                $localUser->avatar = $userData['avatar'] ?? null;
+
+                // Establecer el modelo User real en la sesión
+                Auth::setUser($localUser);
+
+            } catch (Exception $ex) {
+                // Si falla la sincronización (ej. llave foránea no existe),
+                // LOGUEAMOS el error pero permitimos acceso con GenericUser para no bloquear totalmente
+                // (o bloqueamos si es crítico, aqui decidimos no bloquear pero usar GenericUser como fallback)
+                // En este caso, preferimos usar el GenericUser creado arriba si DB falla.
+
+                 // Opción B: Lanzar error (Mejor para debugging inicial)
+               throw new Exception("Error sincronizando usuario local: " . $ex->getMessage());
+            }
 
         } catch (Exception $e) {
             // Si el token es inválido, expirado o manipulado, devolvemos 401

@@ -45,6 +45,7 @@ Route::middleware('sso')->prefix('solicitudes')->group(function () {
 Route::middleware('sso')->get('/usuarios', [\App\Http\Controllers\UsuarioController::class, 'index']);
 Route::middleware('sso')->get('/usuarios', [\App\Http\Controllers\UsuarioController::class, 'index']);
 Route::middleware('sso')->get('/puestos', [PuestoController::class, 'index']);
+Route::middleware('sso')->get('/me', [\App\Http\Controllers\UsuarioController::class, 'me']);
 
 // Asegúrate de que el middleware 'sso' esté registrado en bootstrap/app.php
 Route::middleware('sso')->group(function () {
