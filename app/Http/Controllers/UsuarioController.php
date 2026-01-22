@@ -3,15 +3,9 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Cache;
 
 class UsuarioController extends Controller
 {
-    /**
-     * Obtener lista de usuarios desde la App Madre.
-     * Actúa como un proxy para evitar CORS y manejar autenticación unificada.
-     */
     /**
      * Obtener lista de usuarios desde la Base de Datos Local.
      * Solo devuelve usuarios que ya han sido sincronizados (han hecho login al menos una vez).
