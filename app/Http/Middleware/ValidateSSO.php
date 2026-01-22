@@ -91,31 +91,39 @@ class ValidateSSO
             // Sincronización JIT (Just-In-Time) con base de datos local
             try {
                 $userId = $userData['id'];
-                $cacheKey = "jit_sync_user_{$userId}";
-                $localUser = null;
+                $localUser = \App\Models\User::find($userId);
 
-                // 1. Intentar obtener de caché (para evitar UPDATE masivo en cada request)
-                if (\Illuminate\Support\Facades\Cache::has($cacheKey)) {
-                    $localUser = \App\Models\User::find($userId);
+                // Campos que vienen del Token (Source of Truth)
+                $mapeoDatos = [
+                    'username'   => $userData['username'] ?? $userData['email'],
+                    'name'       => $userData['name'],
+                    'email'      => $userData['email'],
+                    'telefono'   => $userData['telefono'] ?? null,
+                    'puesto_id'  => $userData['puesto_id'] ?? null,
+                    'agencia_id' => $userData['agencia_id'] ?? $userData['idagencia'] ?? null,
+                ];
+
+                $needsUpdate = false;
+
+                if (!$localUser) {
+                    // Si no existe, creamos
+                    $localUser = new \App\Models\User();
+                    $localUser->id = $userId;
+                    $needsUpdate = true;
+                } else {
+                    // Si existe, comparamos campos para ver si algo cambió
+                    foreach ($mapeoDatos as $key => $val) {
+                        // Comparación laxa para evitar falsos positivos por tipos (int vs string)
+                        if ($localUser->$key != $val) {
+                            $needsUpdate = true;
+                            break;
+                        }
+                    }
                 }
 
-                // 2. Si no estaba en caché o no existe en DB, sincronizamos
-                if (!$localUser) {
-                     // Mapear campos del token a campos de la BD local
-                    $localUser = \App\Models\User::updateOrCreate(
-                        ['id' => $userId], // Buscamos por ID (PK)
-                        [
-                            'username' => $userData['username'] ?? $userData['email'], // Fallback si no hay username
-                            'name' => $userData['name'],
-                            'email' => $userData['email'],
-                            'telefono' => $userData['telefono'] ?? null,
-                            'puesto_id' => $userData['puesto_id'] ?? null,
-                            // Nota: El token a veces trae 'idagencia' o 'agencia_id', validamos ambos
-                            'agencia_id' => $userData['agencia_id'] ?? $userData['idagencia'] ?? null,
-                        ]
-                    );
-                    // Guardamos en caché por 10 minutos para no volver a hacer UPDATE
-                    \Illuminate\Support\Facades\Cache::put($cacheKey, true, now()->addMinutes(10));
+                if ($needsUpdate) {
+                    $localUser->fill($mapeoDatos);
+                    $localUser->save();
                 }
 
                 // Inyectamos los Roles y Permisos (que viven en memoria/token) al modelo Eloquent
@@ -129,11 +137,6 @@ class ValidateSSO
                 Auth::setUser($localUser);
 
             } catch (Exception $ex) {
-                // Si falla la sincronización (ej. llave foránea no existe),
-                // LOGUEAMOS el error pero permitimos acceso con GenericUser para no bloquear totalmente
-                // (o bloqueamos si es crítico, aqui decidimos no bloquear pero usar GenericUser como fallback)
-                // En este caso, preferimos usar el GenericUser creado arriba si DB falla.
-
                  // Opción B: Lanzar error (Mejor para debugging inicial)
                throw new Exception("Error sincronizando usuario local: " . $ex->getMessage());
             }
