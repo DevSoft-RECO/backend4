@@ -548,6 +548,10 @@ class SolicitudController extends Controller
 
         $solicitud = Solicitud::findOrFail($id);
 
+        if ($solicitud->estado === 'cerrada') {
+            return response()->json(['error' => 'No se pueden agregar archivos a un caso cerrado.'], 403);
+        }
+
         // Determinar destino basado en rol
         $target = null;
         $folder = '';
@@ -631,6 +635,10 @@ class SolicitudController extends Controller
 
         $pathToDelete = $request->path;
         $solicitud = Solicitud::findOrFail($id);
+
+        if ($solicitud->estado === 'cerrada') {
+            return response()->json(['error' => 'No se pueden eliminar archivos de un caso cerrado.'], 403);
+        }
 
         // Buscar en evidencias_inicial
         $found = false;
