@@ -17,26 +17,18 @@ class Solicitud extends Model
         'descripcion',
         'estado',
         'creado_por_id',
-        'creado_por_nombre',
-        'creado_por_email',
-        'creado_por_cargo',
-        'area', // Nueva columna
-        'creado_por_telefono', // Nueva columna
+        'area',
         'agencia_id',
-        'subcategoria_id', // Renamed from categoria_id
-        'categoria_general_id', // New column
+        'subcategoria_id',
+        'categoria_general_id',
         'responsable_id',
-        'responsable_nombre',
-        'responsable_email',
-        'responsable_telefono', // Nueva columna
-        'responsable_cargo',
         'responsable_tipo', // interno, externo
         'proveedor_id',
         'fecha_asignacion',
         'fecha_toma_caso',
         'evidencias_inicial',
         'evidencias_final',
-        'tipo_solucion', // total, parcial
+        'tipo_solucion',
     ];
 
     protected $casts = [
@@ -59,5 +51,20 @@ class Solicitud extends Model
     public function categoriaGeneral()
     {
         return $this->belongsTo(SolicitudCategoriaGeneral::class, 'categoria_general_id');
+    }
+
+    public function creadoPor()
+    {
+        return $this->belongsTo(User::class, 'creado_por_id');
+    }
+
+    public function responsable()
+    {
+        return $this->belongsTo(User::class, 'responsable_id');
+    }
+
+    public function agencia()
+    {
+        return $this->belongsTo(Agencia::class, 'agencia_id');
     }
 }

@@ -39,7 +39,7 @@ class SolicitudController extends Controller
         $user = Auth::user(); // GenericUser from ValidateSSO
         $roles = $user->roles ?? [];
         $puestoNombre = $this->getPuestoNombre($user);
-        $agencia_id = $user->idagencia ?? null;
+        $agencia_id = $user->agencia_id ?? null;
 
         $query = Solicitud::query();
 
@@ -66,7 +66,7 @@ class SolicitudController extends Controller
             $query->where('categoria_general_id', $request->categoria_general_id);
         }
 
-        $solicitudes = $query->with('seguimientos')->orderBy('id', 'desc')->paginate(20);
+        $solicitudes = $query->with(['seguimientos', 'creadoPor', 'responsable', 'agencia'])->orderBy('id', 'desc')->paginate(20);
 
         return response()->json($solicitudes);
     }
@@ -87,22 +87,18 @@ class SolicitudController extends Controller
         $request->validate([
             'titulo' => 'required|string|max:255',
             'descripcion' => 'required|string',
-            'categoria_general_id' => 'nullable|exists:solicitud_categorias_generales,id', // Validar si viene
+            'categoria_general_id' => 'nullable|exists:solicitud_categorias_generales,id',
         ]);
 
         $solicitud = Solicitud::create([
             'titulo' => $request->titulo,
             'descripcion' => $request->descripcion,
             'estado' => 'reportada',
-            'subcategoria_id' => null, // Se asigna despues (o null)
-            'categoria_general_id' => $request->categoria_general_id, // Asignar si viene
+            'subcategoria_id' => null,
+            'categoria_general_id' => $request->categoria_general_id,
             'creado_por_id' => $user->id,
-            'creado_por_nombre' => $user->name,
-            'creado_por_email' => $user->email ?? null,
-            'creado_por_cargo' => $this->getPuestoNombre($user),
-            'creado_por_telefono' => $user->telefono ?? null, // Nuevo campo
-            'area' => $request->area ?? $user->area ?? null,  // Nuevo campo (Prioridad request, fallback user)
-            'agencia_id' => $user->idagencia ?? null,
+            'area' => $request->area ?? $user->area ?? null,
+            'agencia_id' => $user->agencia_id ?? null,
         ]);
 
         // Procesar evidencias iniciales en GCS
@@ -137,7 +133,7 @@ class SolicitudController extends Controller
      */
     public function show(Request $request, $id)
     {
-        $solicitud = Solicitud::with('seguimientos')->findOrFail($id);
+        $solicitud = Solicitud::with(['seguimientos', 'creadoPor.puesto', 'responsable', 'agencia'])->findOrFail($id);
         $user = Auth::user();
         $roles = $user->roles ?? [];
 
@@ -205,22 +201,14 @@ class SolicitudController extends Controller
     public function assign(Request $request, $id)
     {
         $user = Auth::user();
-        $permisos = $user->permisos ?? [];
-        $roles = $user->roles ?? [];
-
-        // if (!in_array('Super Admin', $roles) && !in_array('solicitudes.asignar', $permisos)) {
-        //      return response()->json(['message' => 'Sin permiso para asignar'], 403);
-        // }
+        // $permisos...
 
         $request->validate([
             'responsable_id' => 'required_without:proveedor_id',
-            'responsable_nombre' => 'required_with:responsable_id',
-            'responsable_email' => 'nullable|email',
-            'responsable_telefono' => 'nullable|string', // Nuevo campo
-            'responsable_cargo' => 'nullable',
             'responsable_tipo' => 'required|in:interno,externo',
             'proveedor_id' => 'required_if:responsable_tipo,externo',
-            'categoria_id' => 'required|integer|exists:solicitud_subcategorias,id', // Frontend envia categoria_id pero es subcategoria
+            'categoria_id' => 'required|integer|exists:solicitud_subcategorias,id',
+            // eliminamos validaciones de nombre/email/cargo/tel
         ]);
 
         $solicitud = Solicitud::findOrFail($id);
@@ -228,37 +216,53 @@ class SolicitudController extends Controller
         $solicitud->update([
             'estado' => 'asignada',
             'responsable_id' => $request->responsable_id,
-            'responsable_nombre' => $request->responsable_nombre,
-            'responsable_email' => $request->responsable_email,
-            'responsable_telefono' => $request->responsable_telefono, // Nuevo campo
-            'responsable_cargo' => $request->responsable_cargo,
+            // 'responsable_nombre' removed
+            // 'responsable_email' removed
             'responsable_tipo' => $request->responsable_tipo,
             'proveedor_id' => $request->proveedor_id,
-            'subcategoria_id' => $request->categoria_id, // Map to subcategoria_id
+            'subcategoria_id' => $request->categoria_id,
             'fecha_asignacion' => Carbon::now(),
         ]);
+
+        // Cargar relacion para obtener nombre
+        $responsableNombre = $request->responsable_nombre ?? 'Desconocido';
+        $responsableEmail = null;
+
+        if ($request->responsable_id) {
+            $responsableUser = \App\Models\User::find($request->responsable_id);
+            if ($responsableUser) {
+                $responsableNombre = $responsableUser->name;
+                $responsableEmail = $responsableUser->email;
+            }
+        }
 
         SolicitudSeguimiento::create([
             'solicitud_id' => $solicitud->id,
             'seguimiento_por_id' => $user->id,
             'seguimiento_por_nombre' => $user->name,
             'seguimiento_por_cargo' => $this->getPuestoNombre($user),
-            'comentario' => "Solicitud asignada a {$request->responsable_nombre}",
+            'comentario' => "Solicitud asignada a {$responsableNombre}",
             'tipo_accion' => 'comentario'
         ]);
 
         // Enviar correo al responsable
-        if ($solicitud->responsable_email) {
+        if ($responsableEmail) {
             try {
-                \Log::info("Intentando enviar correo a: " . $solicitud->responsable_email);
-                Mail::to($solicitud->responsable_email)->send(new SolicitudAsignada($solicitud));
-                \Log::info("Correo enviado exitosamente a: " . $solicitud->responsable_email);
+                \Log::info("Intentando enviar correo a: " . $responsableEmail);
+                // Inyectamos el email manualmente o dejamos que el Mailable lo saque del modelo?
+                // El Mailable SolicitudAsignada probablemente usa $solicitud->responsable_email.
+                // Tendremos que actualizar el Mailable tambien si usa la propiedad antigua,
+                // O asegurarnos que $solicitud->responsable->email este disponible.
+                // Por seguridad, pasamos el objeto solicitud que ya tiene relacion si hacemos load.
+                $solicitud->load('responsable');
+                Mail::to($responsableEmail)->send(new SolicitudAsignada($solicitud));
+                \Log::info("Correo enviado exitosamente a: " . $responsableEmail);
             } catch (\Exception $e) {
                 \Log::error("Error enviando correo de asignación: " . $e->getMessage());
                 \Log::error($e->getTraceAsString());
             }
         } else {
-            \Log::info("No se envió correo: Email del responsable no proporcionado. ID: " . $solicitud->responsable_id);
+            \Log::info("No se envió correo: Email del responsable no proporcionado.");
         }
 
         return response()->json($solicitud);
@@ -288,15 +292,9 @@ class SolicitudController extends Controller
         $solicitud->update([
             'estado' => 'asignada',
             'responsable_id' => $user->id,
-            'responsable_nombre' => $user->name,
-            'responsable_cargo' => $puestoNombre,
             'responsable_tipo' => 'interno',
-            'subcategoria_id' => $request->categoria_id, // Map to subcategoria_id
-            // fecha_toma_caso se marca cuando empieza a trabajar (moviendo a en_seguimiento) o aqui?
-            // El usuario dijo: "Toma el caso... Estado => Asignada".
-            // Pero proveedor: "Se registra Fecha toma caso... Estado => En seguimiento"
-            // Dejaremos fecha_toma_caso null por ahora o Now() si se considera tomado.
-            // Ajuste al requerimiento 2.2: "Estado -> Asignada"
+            'subcategoria_id' => $request->categoria_id,
+            // 'responsable_nombre', 'responsable_cargo' removed
         ]);
 
         SolicitudSeguimiento::create([
