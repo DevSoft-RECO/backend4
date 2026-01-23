@@ -19,7 +19,18 @@ return [
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => ['http://localhost:5176'], // URL del Frontend Hija
+ 'allowed_origins' => [
+        // ---------------------------------------------------------
+        // 1. ENTORNO LOCAL (Desarrollo)
+        // ---------------------------------------------------------
+        'http://localhost:5176',     // Tu App Hija Local
+
+
+        // ---------------------------------------------------------
+        // 2. ENTORNO PRODUCCIÓN (Google Cloud)
+        // ---------------------------------------------------------
+        'https://gestiones.yamankutx.com.gt',       // Tu App Madre Real
+    ],
 
     'allowed_origins_patterns' => [],
 
