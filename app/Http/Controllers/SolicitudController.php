@@ -80,7 +80,7 @@ class SolicitudController extends Controller
         $permisos = $user->permisos ?? [];
         $roles = $user->roles ?? [];
 
-        if (!in_array('Super Admin', $roles) && !in_array('Jefes de Agencia', $roles) && !in_array('crear_gestiones', $permisos)) {
+        if (!in_array('Super Admin', $roles) && !in_array('crear-solicitudes-tech', $permisos) && !in_array('crear-solicitudes-admin', $permisos)) {
             return response()->json(['message' => 'No tiene permiso para crear solicitudes'], 403);
         }
 
