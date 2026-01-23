@@ -99,14 +99,15 @@ class ValidateSSO
                     'name'       => $userData['name'],
                     'email'      => $userData['email'],
                     'telefono'   => $userData['telefono'] ?? null,
-                    // Validar si existen las llaves foráneas localmente para evitar error 1452
-                    'puesto_id'  => (!empty($userData['puesto_id']) && \App\Models\Puesto::where('id', $userData['puesto_id'])->exists())
-                                    ? $userData['puesto_id']
+                    // CORRECCION: Buscar ID local usando el ID remoto (madre_id)
+                    'puesto_id'  => (!empty($userData['puesto_id']))
+                                    ? \App\Models\Puesto::where('puesto_madre_id', $userData['puesto_id'])->value('id')
                                     : null,
-                    'agencia_id' => (!empty($userData['agencia_id']) && \App\Models\Agencia::where('id', $userData['agencia_id'])->exists())
-                                    ? $userData['agencia_id']
-                                    : ((!empty($userData['idagencia']) && \App\Models\Agencia::where('id', $userData['idagencia'])->exists())
-                                        ? $userData['idagencia']
+
+                    'agencia_id' => (!empty($userData['agencia_id']))
+                                    ? \App\Models\Agencia::where('agencia_madre_id', $userData['agencia_id'])->value('id')
+                                    : ((!empty($userData['idagencia']))
+                                        ? \App\Models\Agencia::where('agencia_madre_id', $userData['idagencia'])->value('id')
                                         : null),
                 ];
 
