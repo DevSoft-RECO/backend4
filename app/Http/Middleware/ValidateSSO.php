@@ -99,8 +99,15 @@ class ValidateSSO
                     'name'       => $userData['name'],
                     'email'      => $userData['email'],
                     'telefono'   => $userData['telefono'] ?? null,
-                    'puesto_id'  => $userData['puesto_id'] ?? null,
-                    'agencia_id' => $userData['agencia_id'] ?? $userData['idagencia'] ?? null,
+                    // Validar si existen las llaves foráneas localmente para evitar error 1452
+                    'puesto_id'  => (!empty($userData['puesto_id']) && \App\Models\Puesto::where('id', $userData['puesto_id'])->exists())
+                                    ? $userData['puesto_id']
+                                    : null,
+                    'agencia_id' => (!empty($userData['agencia_id']) && \App\Models\Agencia::where('id', $userData['agencia_id'])->exists())
+                                    ? $userData['agencia_id']
+                                    : ((!empty($userData['idagencia']) && \App\Models\Agencia::where('id', $userData['idagencia'])->exists())
+                                        ? $userData['idagencia']
+                                        : null),
                 ];
 
                 $needsUpdate = false;
@@ -110,7 +117,9 @@ class ValidateSSO
                     $localUser = new \App\Models\User();
                     $localUser->id = $userId;
                     $needsUpdate = true;
-                } else {
+                }
+
+                if (!$needsUpdate) {
                     // Si existe, comparamos campos para ver si algo cambió
                     foreach ($mapeoDatos as $key => $val) {
                         // Comparación laxa para evitar falsos positivos por tipos (int vs string)

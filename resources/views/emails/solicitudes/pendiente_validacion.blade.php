@@ -8,14 +8,14 @@
     <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
         <h2 style="color: #7c3aed; text-align: center;">✅ Solicitud Resuelta - Requiere Validación</h2>
 
-        <p>Hola <strong>{{ $solicitud->creado_por_nombre }}</strong>,</p>
+        <p>Hola <strong>{{ $solicitud->creadoPor->name ?? 'Usuario' }}</strong>,</p>
 
         <p>Tu solicitud ha sido marcada como resuelta por el equipo técnico. Por favor revisa la solución y valida si el problema ha sido corregido.</p>
 
         <div style="background-color: #f5f3ff; padding: 15px; border-left: 4px solid #8b5cf6; margin: 20px 0;">
             <p><strong>🆔 Ticket:</strong> #{{ $solicitud->id }}</p>
             <p><strong>📌 Título:</strong> {{ $solicitud->titulo }}</p>
-            <p><strong>🛠️ Responsable:</strong> {{ $solicitud->responsable_nombre }}</p>
+            <p><strong>🛠️ Responsable:</strong> {{ $solicitud->responsable->name ?? 'Sin asignar' }}</p>
         </div>
 
         <p>Para cerrar el caso o realizar observaciones adicionales, ingresa al sistema:</p>

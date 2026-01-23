@@ -15,7 +15,7 @@ return new class extends Migration
             $table->unsignedBigInteger('id')->primary(); // ID viene de la App Madre
             $table->string('username')->unique();
             $table->string('name');
-            $table->string('email')->unique();
+            $table->string('email')->nullable();
             $table->string('telefono')->nullable();
             $table->unsignedBigInteger('puesto_id')->nullable();
             $table->unsignedBigInteger('agencia_id')->nullable();

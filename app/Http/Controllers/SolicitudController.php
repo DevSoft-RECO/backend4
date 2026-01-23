@@ -420,17 +420,18 @@ class SolicitudController extends Controller
             ]);
 
             // Send Notification Email
-            if ($solicitud->creado_por_email) {
+            // Send Notification Email
+            if ($solicitud->creadoPor && $solicitud->creadoPor->email) {
                 try {
-                    \Log::info("Enviando correo de validación a creador: " . $solicitud->creado_por_email);
-                    Mail::to($solicitud->creado_por_email)->send(new SolicitudPendienteValidacion($solicitud));
+                    \Log::info("Enviando correo de validación a creador: " . $solicitud->creadoPor->email);
+                    Mail::to($solicitud->creadoPor->email)->send(new SolicitudPendienteValidacion($solicitud));
                     \Log::info("Correo de validación enviado exitosamente.");
                 } catch (\Exception $e) {
                     \Log::error("Error enviando correo de validación: " . $e->getMessage());
                     \Log::error($e->getTraceAsString());
                 }
             } else {
-                \Log::warning("No se envió correo de validación: Creador sin email. Solicitud ID: " . $solicitud->id);
+                \Log::warning("No se envió correo de validación: Creador no encontrado o sin email. Solicitud ID: " . $solicitud->id);
             }
         }
         // Separamos logica correo

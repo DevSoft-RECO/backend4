@@ -33,7 +33,7 @@ class SolicitudPendienteValidacion extends Mailable
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: '✅ Solicitud Resuelta - Requiere Validación - Ticket #' . $this->solicitud->id,
+            subject: 'Solicitud Resuelta - Requiere Validación - Ticket #' . $this->solicitud->id,
         );
     }
 

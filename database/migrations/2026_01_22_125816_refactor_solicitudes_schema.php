@@ -12,10 +12,11 @@ return new class extends Migration
     public function up(): void
     {
         // 1. Limpieza de datos (Orphans) para evitar error de FK
-        // En desarrollo, con cambio de esquema mayor, truncamos para asegurar integridad.
-        // Primero seguimientos por FK
-        \Illuminate\Support\Facades\DB::table('solicitud_seguimientos')->truncate();
-        \Illuminate\Support\Facades\DB::table('solicitudes')->truncate();
+        // En desarrollo, con cambio de esquema mayor, borramos para asegurar integridad.
+        \Illuminate\Support\Facades\DB::statement('SET FOREIGN_KEY_CHECKS=0;');
+        \Illuminate\Support\Facades\DB::table('solicitud_seguimientos')->delete();
+        \Illuminate\Support\Facades\DB::table('solicitudes')->delete();
+        \Illuminate\Support\Facades\DB::statement('SET FOREIGN_KEY_CHECKS=1;');
 
         Schema::table('solicitudes', function (Blueprint $table) {
             // Eliminar columnas redundantes (la info está en la tabla users)

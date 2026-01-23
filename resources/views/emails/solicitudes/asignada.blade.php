@@ -32,7 +32,7 @@
 
                             <!-- Greeting -->
                             <p style="margin: 0 0 20px 0; color: #374151; font-size: 16px; line-height: 1.5;">
-                                Estimado(a) <strong style="color: #111827;">{{ $solicitud->responsable_nombre }}</strong>,
+                                Estimado(a) <strong style="color: #111827;">{{ $solicitud->responsable->name ?? 'Responsable' }}</strong>,
                             </p>
 
                             <p style="margin: 0 0 30px 0; color: #6b7280; font-size: 15px; line-height: 1.6;">
@@ -63,26 +63,26 @@
                                                     <strong style="color: #374151;">Solicitante:</strong>
                                                 </td>
                                                 <td style="padding: 8px 0; color: #111827; font-size: 13px;">
-                                                    {{ $solicitud->creado_por_nombre }}
+                                                    {{ $solicitud->creadoPor->name ?? 'Usuario Desconocido' }}
                                                 </td>
                                             </tr>
-                                            @if($solicitud->creado_por_cargo)
+                                            @if($solicitud->creadoPor && ($solicitud->creadoPor->puesto || $solicitud->creadoPor->cargo))
                                             <tr>
                                                 <td style="padding: 8px 0; color: #6b7280; font-size: 13px; vertical-align: top;">
                                                     <strong style="color: #374151;">Cargo:</strong>
                                                 </td>
                                                 <td style="padding: 8px 0; color: #111827; font-size: 13px;">
-                                                    {{ $solicitud->creado_por_cargo }}
+                                                    {{ $solicitud->creadoPor->puesto->nombre ?? $solicitud->creadoPor->cargo ?? 'Sin Puesto' }}
                                                 </td>
                                             </tr>
                                             @endif
-                                            @if($solicitud->agencia_id)
+                                            @if($solicitud->agencia)
                                             <tr>
                                                 <td style="padding: 8px 0; color: #6b7280; font-size: 13px; vertical-align: top;">
                                                     <strong style="color: #374151;">Agencia:</strong>
                                                 </td>
                                                 <td style="padding: 8px 0; color: #111827; font-size: 13px;">
-                                                    {{ $solicitud->agencia_id }}
+                                                    {{ $solicitud->agencia->nombre ?? $solicitud->agencia_id }}
                                                 </td>
                                             </tr>
                                             @endif
