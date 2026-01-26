@@ -16,11 +16,11 @@
 
                     <!-- Header -->
                     <tr>
-                        <td style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 30px 40px; text-align: center;">
-                            <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 600; letter-spacing: -0.5px;">
+                        <td style="background-color: #ffffff; padding: 30px 40px; text-align: center; border-bottom: 3px solid #10b981;">
+                            <h1 style="margin: 0; color: #111827; font-size: 24px; font-weight: 700; letter-spacing: -0.5px;">
                                 Nueva Solicitud Asignada
                             </h1>
-                            <p style="margin: 8px 0 0 0; color: #d1fae5; font-size: 14px;">
+                            <p style="margin: 8px 0 0 0; color: #6b7280; font-size: 14px;">
                                 Sistema de Gestión de Solicitudes
                             </p>
                         </td>
@@ -40,7 +40,7 @@
                             </p>
 
                             <!-- Ticket Info Card -->
-                            <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #f9fafb; border-radius: 6px; overflow: hidden; margin-bottom: 30px;">
+                            <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #f9fafb; border-radius: 6px; overflow: hidden; margin-bottom: 30px; border: 1px solid #e5e7eb;">
                                 <tr>
                                     <td style="padding: 20px; border-left: 4px solid #10b981;">
 
@@ -128,9 +128,16 @@
                                 <p style="margin: 0 0 20px 0; color: #047857; font-size: 13px; line-height: 1.5;">
                                     Haga clic en el botón para revisar y dar seguimiento a esta solicitud.
                                 </p>
-                                <a href="{{ $urlSolicitud }}" style="display: inline-block; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: #ffffff; padding: 12px 32px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px; box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);">
-                                    Ver Solicitud #{{ $solicitud->id }}
-                                </a>
+                                <!-- Outlook Button Hack: Table Wrapper + Solid Color -->
+                                <table align="center" border="0" cellpadding="0" cellspacing="0" role="presentation">
+                                    <tr>
+                                        <td align="center" bgcolor="#10b981" style="border-radius: 6px;">
+                                            <a href="{{ $urlSolicitud }}" style="display: inline-block; background-color: #10b981; color: #ffffff; padding: 14px 32px; text-decoration: none; border-radius: 6px; font-weight: 700; font-size: 14px; border: 1px solid #10b981;">
+                                                Ver Solicitud #{{ $solicitud->id }}
+                                            </a>
+                                        </td>
+                                    </tr>
+                                </table>
                             </div>
 
                         </td>
