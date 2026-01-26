@@ -57,4 +57,6 @@ Route::middleware('sso')->group(function () {
     Route::post('/sincronizar-puestos', [PuestoSyncController::class, 'sync']);
     // Route::get('/puestos', ... ) ya está definido arriba globalmente
 
+    // Dashboard
+    Route::get('/dashboard', [\App\Http\Controllers\DashboardController::class, 'index']);
 });
