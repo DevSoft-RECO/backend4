@@ -93,6 +93,7 @@ class DashboardController extends Controller
 
         // Chart: Top Agencies (Only if viewing All Agencies)
         $agencyDistro = [];
+        $allAgencyDistro = []; // New full list
         if (!$scopeAgenciaId) {
             $agencyQuery = clone $query;
             $agencyDistro = $agencyQuery->join('agencias', 'solicitudes.agencia_id', '=', 'agencias.id')
@@ -100,6 +101,15 @@ class DashboardController extends Controller
                 ->groupBy('agencias.nombre')
                 ->orderByDesc('count')
                 ->limit(10)
+                ->get();
+
+            // Full List for Bottom Chart
+            $allAgencyQuery = clone $query;
+            $allAgencyDistro = $allAgencyQuery->join('agencias', 'solicitudes.agencia_id', '=', 'agencias.id')
+                ->select('agencias.nombre', DB::raw('count(*) as count'))
+                ->groupBy('agencias.nombre')
+                ->orderByDesc('count')
+                // No Limit
                 ->get();
         }
 
@@ -124,7 +134,8 @@ class DashboardController extends Controller
             'charts' => [
                 'status' => $statusDistro,
                 'subcategories' => $subcatDistro,
-                'agencies' => $agencyDistro
+                'agencies' => $agencyDistro,
+                'all_agencies' => $allAgencyDistro // New
             ],
             'leaderboard' => $leaderboard,
             'permissions' => [
