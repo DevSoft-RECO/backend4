@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="es">
 <head>
     <title>Solicitud Pendiente de Validación</title>
 </head>
