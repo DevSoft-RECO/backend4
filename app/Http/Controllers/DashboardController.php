@@ -208,18 +208,36 @@ class DashboardController extends Controller
             $query->whereBetween('solicitudes.created_at', [$request->date_start, $request->date_end]);
         }
 
-        // 3. Filter by Resolution Type
-        if ($request->has('type') && in_array($request->type, ['total', 'parcial'])) {
-            $query->where('tipo_solucion', $request->type);
+        // 3. Handle Types
+        $type = $request->input('type');
+
+        if ($type === 'abiertas') {
+            // Abiertas: reportada, asignada, en_seguimiento, reabierta
+            $query->whereIn('estado', ['reportada', 'asignada', 'en_seguimiento', 'reabierta']);
+            // Optimized Select
+            return response()->json($query->select('id', 'titulo', 'created_at')->orderByDesc('created_at')->get());
+
+        } elseif ($type === 'validacion') {
+            // Por Validar check
+            $query->where('estado', 'pendiente_validacion');
+             // Optimized Select
+            return response()->json($query->select('id', 'titulo', 'created_at')->orderByDesc('created_at')->get());
+
+        } elseif (in_array($type, ['total', 'parcial'])) {
+             // Existing Resolution Logic (Full Details)
+            $query->where('tipo_solucion', $type);
+            $requests = $query->with(['responsable:id,name', 'agencia:id,nombre', 'categoriaGeneral:id,nombre', 'subcategoria:id,nombre'])
+                              ->orderByDesc('created_at')
+                              ->get();
+            return response()->json($requests);
+
         } else {
-            $query->whereIn('tipo_solucion', ['total', 'parcial']);
+            // Default or if no valid type provided (maybe just resolutions?)
+             $query->whereIn('tipo_solucion', ['total', 'parcial']);
+             $requests = $query->with(['responsable:id,name', 'agencia:id,nombre', 'categoriaGeneral:id,nombre', 'subcategoria:id,nombre'])
+                              ->orderByDesc('created_at')
+                              ->get();
+             return response()->json($requests);
         }
-
-        // 4. Return Data
-        $requests = $query->with(['responsable:id,name', 'agencia:id,nombre', 'categoriaGeneral:id,nombre', 'subcategoria:id,nombre'])
-                          ->orderByDesc('created_at')
-                          ->get();
-
-        return response()->json($requests);
     }
 }
