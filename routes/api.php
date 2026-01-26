@@ -59,4 +59,5 @@ Route::middleware('sso')->group(function () {
 
     // Dashboard
     Route::get('/dashboard', [\App\Http\Controllers\DashboardController::class, 'index']);
+    Route::get('/dashboard/resolution-details', [\App\Http\Controllers\DashboardController::class, 'getResolutionDetails']);
 });

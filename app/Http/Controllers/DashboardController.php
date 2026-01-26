@@ -123,6 +123,14 @@ class DashboardController extends Controller
             ->limit(5)
             ->get();
 
+        // Resolution Stats
+        $resolutionQuery = clone $query;
+        $resolutionStats = $resolutionQuery->whereIn('tipo_solucion', ['total', 'parcial'])
+             ->select('tipo_solucion', DB::raw('count(*) as count'))
+             ->groupBy('tipo_solucion')
+             ->get()
+             ->pluck('count', 'tipo_solucion');
+
         // 4. Return Data
         return response()->json([
             'kpi' => [
@@ -130,6 +138,10 @@ class DashboardController extends Controller
                 'open' => $stats->abiertas,
                 'validation' => $stats->validacion,
                 'closed' => $stats->cerradas
+            ],
+            'resolution' => [
+                'total' => $resolutionStats['total'] ?? 0,
+                'parcial' => $resolutionStats['parcial'] ?? 0
             ],
             'charts' => [
                 'status' => $statusDistro,
@@ -143,5 +155,71 @@ class DashboardController extends Controller
                 'scope' => $scopeAgenciaId ? 'agency' : 'general'
             ]
         ]);
+    }
+
+    /**
+     * Get Detailed List of Resolved Requests
+     */
+    public function getResolutionDetails(Request $request)
+    {
+        $user = Auth::user();
+        $roles = $user->roles ?? [];
+        $permisos = $user->permisos ?? [];
+
+        // 1. Determine Scope based on Permissions
+        // Priority: General > Agencia > None (403)
+        $canViewGeneral = in_array('Super Admin', $roles) || in_array('ver-dashboard-general', $permisos);
+        $canViewAgencia = in_array('ver-dashboard-agencia', $permisos) || in_array('dashboard-solo-lectura', $permisos);
+
+        $scopeAgenciaId = null;
+
+        if ($canViewGeneral) {
+            // Admin can filter by any agency, or see all (null)
+            if ($request->has('agencia_id') && $request->agencia_id != 'null') {
+                $scopeAgenciaId = $request->agencia_id;
+            }
+        } elseif ($canViewAgencia) {
+            // Agency User is FORCED to their agency
+            $scopeAgenciaId = $user->agencia_id;
+
+            // Security check: User must have an agency_id to view agency dashboard
+            if (!$scopeAgenciaId) {
+                return response()->json(['message' => 'Usuario no tiene agencia asignada.'], 403);
+            }
+        } else {
+            return response()->json(['message' => 'No tiene permiso para ver el dashboard.'], 403);
+        }
+
+        // 2. Base Query Construction
+        $query = Solicitud::query();
+
+        // Filter by Agency Data Scope
+        if ($scopeAgenciaId) {
+            $query->where('solicitudes.agencia_id', $scopeAgenciaId);
+        }
+
+        // Filter by General Category (Tech vs Admin)
+        if ($request->has('category_id') && $request->category_id != 'null') {
+            $query->where('solicitudes.categoria_general_id', $request->category_id);
+        }
+
+        // Filter by Date Range
+        if ($request->has('date_start') && $request->has('date_end')) {
+            $query->whereBetween('solicitudes.created_at', [$request->date_start, $request->date_end]);
+        }
+
+        // 3. Filter by Resolution Type
+        if ($request->has('type') && in_array($request->type, ['total', 'parcial'])) {
+            $query->where('tipo_solucion', $request->type);
+        } else {
+            $query->whereIn('tipo_solucion', ['total', 'parcial']);
+        }
+
+        // 4. Return Data
+        $requests = $query->with(['responsable:id,name', 'agencia:id,nombre', 'categoriaGeneral:id,nombre', 'subcategoria:id,nombre'])
+                          ->orderByDesc('created_at')
+                          ->get();
+
+        return response()->json($requests);
     }
 }
