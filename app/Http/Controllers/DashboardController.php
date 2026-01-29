@@ -19,10 +19,29 @@ class DashboardController extends Controller
         $roles = $user->roles ?? [];
         $permisos = $user->permisos ?? [];
 
-        // 1. Determine Scope based on Permissions
-        // Priority: General > Agencia > None (403)
-        $canViewGeneral = in_array('Super Admin', $roles) || in_array('ver-dashboard-general', $permisos);
-        $canViewAgencia = in_array('ver-dashboard-agencia', $permisos) || in_array('dashboard-solo-lectura', $permisos);
+        // 1. Determine Scope & Interaction based on Permissions
+        // Permissions:
+        // - 'ver-dashboard-general': View All, Can Interact (unless restricted otherwise, but usually yes)
+        // - 'ver-dashboard-agencia': View Own Agency, Can Interact
+        // - 'dashboard-solo-lectura': View Own Agency, NO Interaction
+
+        $isSuperAdmin = in_array('Super Admin', $roles);
+        $hasGeneral  = in_array('ver-dashboard-general', $permisos);
+        $hasAgencia  = in_array('ver-dashboard-agencia', $permisos);
+        $hasSoloLectura = in_array('dashboard-solo-lectura', $permisos);
+
+        // Access Level Logic
+        $canViewGeneral = $isSuperAdmin || $hasGeneral;
+        $canViewAgencia = $hasAgencia || $hasSoloLectura; // "Solo lectura" implies viewing agency data
+
+        // Interaction Logic
+        // Interaction is allowed if Super Admin, General, or Agency.
+        // It is NOT allowed if the user ONLY has dashboard-solo-lectura (and none of the others).
+        // However, if a user has BOTH (e.g. legacy or mess up), usually the more permissive wins?
+        // User request says: "1: dashboard-solo-lectura ... botones se desactivan"
+        // "2: ver-dashboard-agencia ... interaccion disponible"
+        // So, if you have 'ver-dashboard-agencia', you CAN interact.
+        $canInteract = $isSuperAdmin || $hasGeneral || $hasAgencia;
 
         // Scope Defaults
         $scopeAgenciaId = null;
@@ -33,7 +52,7 @@ class DashboardController extends Controller
                 $scopeAgenciaId = $request->agencia_id;
             }
         } elseif ($canViewAgencia) {
-            // Agency User is FORCED to their agency
+            // Agency or Read-Only User is FORCED to their agency
             $scopeAgenciaId = $user->agencia_id;
 
             // Security check: User must have an agency_id to view agency dashboard
@@ -41,6 +60,7 @@ class DashboardController extends Controller
                 return response()->json(['message' => 'Usuario no tiene agencia asignada.'], 403);
             }
         } else {
+            // No permissions at all
             return response()->json(['message' => 'No tiene permiso para ver el dashboard.'], 403);
         }
 
@@ -151,7 +171,8 @@ class DashboardController extends Controller
             ],
             'leaderboard' => $leaderboard,
             'permissions' => [
-                'can_drill_down' => !in_array('dashboard-solo-lectura', $permisos),
+                'can_interact' => $canInteract,
+                'can_drill_down' => $canInteract, // Drill down is a form of interaction
                 'scope' => $scopeAgenciaId ? 'agency' : 'general'
             ]
         ]);
