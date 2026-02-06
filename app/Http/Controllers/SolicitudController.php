@@ -128,7 +128,7 @@ class SolicitudController extends Controller
         // Enviar correo si es Tecnológica (ID 1)
         if ($solicitud->categoria_general_id == 1) {
             try {
-                \Illuminate\Support\Facades\Mail::to('asraelabdul@gmail.com')->send(new \App\Mail\NuevaSolicitudTecnologica($solicitud));
+                \Illuminate\Support\Facades\Mail::to('soporte@yamankutxrl.com')->send(new \App\Mail\NuevaSolicitudTecnologica($solicitud));
             } catch (\Exception $e) {
                 \Log::error("Error enviando correo tecnológica: " . $e->getMessage());
             }
