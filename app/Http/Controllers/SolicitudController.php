@@ -241,7 +241,7 @@ class SolicitudController extends Controller
             'seguimiento_por_id' => $user->id,
             'seguimiento_por_nombre' => $user->name,
             'seguimiento_por_cargo' => $this->getPuestoNombre($user),
-            'comentario' => "Solicitud asignada a {$responsableNombre}",
+            'comentario' => "Solicitud asignada/reasignada a {$responsableNombre}",
             'tipo_accion' => 'comentario'
         ]);
 
@@ -768,4 +768,28 @@ class SolicitudController extends Controller
 
         return response()->json(['message' => 'Solicitud eliminada correctamente, incluidos sus archivos.'], 200);
     }
+    /**
+     * Actualizar Agencia (Solo si reportada)
+     */
+    public function updateAgencia(Request $request, $id)
+    {
+        $user = Auth::user();
+        $solicitud = Solicitud::findOrFail($id);
+
+        if ($solicitud->estado !== 'reportada') {
+            return response()->json(['message' => 'Solo se puede cambiar la agencia en estado reportada.'], 403);
+        }
+
+        $request->validate([
+            'agencia_id' => 'required|exists:agencias,id'
+        ]);
+
+        $oldAgenciaId = $solicitud->agencia_id;
+        $solicitud->agencia_id = $request->agencia_id;
+        $solicitud->save();
+
+        return response()->json($solicitud->load('agencia'));
+    }
 }
+
+
