@@ -706,4 +706,66 @@ class SolicitudController extends Controller
 
         return response()->json(['message' => 'Archivo eliminado correctamente']);
     }
+    /**
+     * Eliminar solicitud (DB y GCS)
+     */
+    public function destroy($id)
+    {
+        $user = Auth::user();
+
+        // Reglas de seguridad:
+        // Solo Super Admin puede eliminar CUALQUIER solicitud.
+        // Opcional: El Creador podria eliminar si aun esta en estado "reportada" (pendiente).
+        // Por safety, vamos a permitir solo a Super Admin por ahora, o al creador si estado=reportada.
+
+        $solicitud = Solicitud::findOrFail($id);
+
+        $esSuperAdmin = in_array('Super Admin', $user->roles ?? []);
+        $esCreador = $solicitud->creado_por_id == $user->id;
+        $esReportada = $solicitud->estado == 'reportada';
+
+        if (!$esSuperAdmin) {
+            if (!($esCreador && $esReportada)) {
+                return response()->json(['message' => 'No tiene permiso para eliminar esta solicitud.'], 403);
+            }
+        }
+
+        // 1. Recolectar todos los archivos para eliminar de GCS
+        $filesToDelete = [];
+
+        // Inicial
+        if (!empty($solicitud->evidencias_inicial)) {
+            $filesToDelete = array_merge($filesToDelete, $solicitud->evidencias_inicial);
+        }
+        // Final
+        if (!empty($solicitud->evidencias_final)) {
+            $filesToDelete = array_merge($filesToDelete, $solicitud->evidencias_final);
+        }
+        // Seguimientos
+        $seguimientos = SolicitudSeguimiento::where('solicitud_id', $id)->get();
+        foreach ($seguimientos as $seg) {
+            if (!empty($seg->evidencias) && is_array($seg->evidencias)) {
+                $filesToDelete = array_merge($filesToDelete, $seg->evidencias);
+            }
+        }
+
+        // 2. Eliminar de GCS
+        if (count($filesToDelete) > 0) {
+            try {
+                Storage::disk($this->disk)->delete($filesToDelete);
+                \Log::info("Solicitud Delete: Se eliminaron " . count($filesToDelete) . " archivos de GCS.");
+            } catch (\Exception $e) {
+                \Log::error("Solicitud Delete Error GCS: " . $e->getMessage());
+                // Continuamos para eliminar el registro de DB de todas formas
+            }
+        }
+
+        // 3. Eliminar Seguimientos
+        $solicitud->seguimientos()->delete();
+
+        // 4. Eliminar Solicitud
+        $solicitud->delete();
+
+        return response()->json(['message' => 'Solicitud eliminada correctamente, incluidos sus archivos.'], 200);
+    }
 }

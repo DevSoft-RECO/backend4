@@ -28,6 +28,7 @@ Route::middleware('sso')->prefix('solicitudes')->group(function () {
 
     Route::get('/', [SolicitudController::class, 'index']);
     Route::post('/', [SolicitudController::class, 'store']);
+    Route::delete('/{id}', [SolicitudController::class, 'destroy']);
     Route::get('/{id}', [SolicitudController::class, 'show']);
     Route::put('/{id}/asignar', [SolicitudController::class, 'assign']);
     Route::put('/{id}/tomar', [SolicitudController::class, 'take']);
