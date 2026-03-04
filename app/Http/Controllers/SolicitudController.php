@@ -510,6 +510,8 @@ class SolicitudController extends Controller
 
         return response()->json($solicitud);
     }
+
+
     public function getFileUrl(Request $request, $id)
     {
         $request->validate([

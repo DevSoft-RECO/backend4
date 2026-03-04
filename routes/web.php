@@ -68,3 +68,71 @@ Route::get('/', function () {
 //         return back()->with('error', '❌ Error: ' . $response->body());
 //     }
 // });
+
+// ==========================================
+// PRUEBA TIGO BUSINESS B2B
+// ==========================================
+
+
+
+
+
+// 1. Ruta para mostrar el formulario
+Route::get('/prueba-tigo', function () {
+    return view('prueba-tigo');
+});
+
+
+
+Route::post('/enviar-mensaje-tigo', function (Request $request) {
+    // 1. Validaciones
+    $request->validate([
+        'telefono' => 'required|numeric|digits:8',
+        'mensaje'  => 'required|string|max:160',
+    ]);
+
+    // 2. Preparar variables
+    $telefono = '502' . $request->input('telefono');
+
+    $tigoUser    = env('TIGO_USER');
+    $tigoPass    = env('TIGO_PASSWORD');
+    $apiKey      = env('TIGO_API_KEY');
+    $apiSecret   = env('TIGO_API_SECRET');
+    $orgId       = env('TIGO_ORG_ID');
+
+    // 3. Obtener Token
+    $tokenResponse = Http::asForm()
+        ->withBasicAuth($tigoUser, $tigoPass)
+        ->post('https://prod.api.tigo.com/oauth/client_credential/accesstoken?grant_type=client_credentials');
+
+    if (!$tokenResponse->successful()) {
+        return back()->with('error', '❌ Error Token: ' . $tokenResponse->body());
+    }
+
+    $accessToken = $tokenResponse->json('access_token');
+
+    // 4. Enviar SMS
+    $smsResponse = Http::withToken($accessToken)
+        ->withHeaders([
+            'APIKey'       => $apiKey,
+            'APISecret'    => $apiSecret,
+            'Content-Type' => 'application/json'
+        ])
+        ->post("https://prod.api.tigo.com/v1/tigo/b2b/gt/comcorp/messages/organizations/{$orgId}", [
+            'protocol'      => 'sms',
+            'msisdn'        => $telefono,
+            'body'          => $request->input('mensaje'),
+            'priority'      => 0,
+
+            // --- CAMBIO IMPORTANTE ---
+            // Comentamos estas líneas para que Tigo use tu remitente por defecto.
+            // 'shortcodeId'   => env('TIGO_SHORTCODE', 'TIGO'),
+            // 'shortcodeType' => 'pretty_code',
+        ]);
+
+    if ($smsResponse->successful()) {
+        return back()->with('status', '✅ Enviado correctamente a ' . $telefono);
+    } else {
+        return back()->with('error', '❌ Falló el envío: ' . $smsResponse->body());
+    }
+});
