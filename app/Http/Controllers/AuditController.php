@@ -18,10 +18,14 @@ class AuditController extends Controller
     {
         $user = Auth::user();
         $roles = $user->roles ?? [];
+        $permissions = $user->permissions ?? $user->permisos ?? [];
 
-        // Solo Super Admin o roles de auditoría pueden acceder
-        if (!in_array('Super Admin', $roles)) {
-            return response()->json(['message' => 'No tiene permisos para acceder a esta información'], 403);
+        // Solo Super Admin o usuarios con permiso 'auditoria' pueden acceder
+        if (!in_array('Super Admin', $roles) && !in_array('auditoria', $permissions)) {
+            // Also check standard Laravel method if available
+            if (!method_exists($user, 'hasPermissionTo') || !$user->hasPermissionTo('auditoria')) {
+                return response()->json(['message' => 'No tiene permisos para acceder a esta información'], 403);
+            }
         }
 
         $query = Solicitud::query();
@@ -60,9 +64,12 @@ class AuditController extends Controller
     {
         $user = Auth::user();
         $roles = $user->roles ?? [];
+        $permissions = $user->permissions ?? $user->permisos ?? [];
 
-        if (!in_array('Super Admin', $roles)) {
-            return response()->json(['message' => 'No tiene permisos para ver esta solicitud'], 403);
+        if (!in_array('Super Admin', $roles) && !in_array('auditoria', $permissions)) {
+            if (!method_exists($user, 'hasPermissionTo') || !$user->hasPermissionTo('auditoria')) {
+                return response()->json(['message' => 'No tiene permisos para ver esta solicitud'], 403);
+            }
         }
 
         $solicitud = Solicitud::with(['seguimientos', 'creadoPor.puesto', 'responsable', 'agencia'])->findOrFail($id);
