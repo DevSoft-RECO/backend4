@@ -48,6 +48,12 @@ Route::middleware('sso')->prefix('solicitudes')->group(function () {
 
 });
 
+// Dashboard de Auditoría
+Route::middleware('sso')->prefix('audit')->group(function () {
+    Route::get('/solicitudes', [\App\Http\Controllers\AuditController::class, 'index']);
+    Route::get('/solicitudes/{id}', [\App\Http\Controllers\AuditController::class, 'show']);
+});
+
 // Usuarios (Proxy a App Madre) - Fuera del prefijo 'solicitudes' pero protegido por SSO
 Route::middleware('sso')->get('/usuarios', [\App\Http\Controllers\UsuarioController::class, 'index']);
 Route::middleware('sso')->get('/usuarios', [\App\Http\Controllers\UsuarioController::class, 'index']);
