@@ -33,7 +33,7 @@ class MisSolicitudesController extends Controller
 
         $solicitudes = $query->with(['seguimientos', 'creadoPor', 'responsable', 'agencia'])
                              ->orderBy('id', 'desc')
-                             ->paginate(20);
+                             ->paginate(10);
 
         return response()->json($solicitudes);
     }
