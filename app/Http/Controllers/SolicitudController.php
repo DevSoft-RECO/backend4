@@ -136,16 +136,19 @@ class SolicitudController extends Controller
         $solicitud = Solicitud::with(['seguimientos', 'creadoPor.puesto', 'responsable', 'agencia'])->findOrFail($id);
         $user = Auth::user();
         $roles = $user->roles ?? [];
+        $permisos = $user->permisos ?? [];
 
         // Verificar autorización: Solo puede ver si:
         // 1. Es el creador de la solicitud
         // 2. Es el responsable asignado
         // 3. Es Super Admin
+        // 4. Tiene permisos para asignar solicitudes (ya que debe verlas para asignarlas)
         $esCreador = $solicitud->creado_por_id == $user->id;
         $esResponsable = $solicitud->responsable_id == $user->id;
         $esSuperAdmin = in_array('Super Admin', $roles);
+        $esAsignador = in_array('asignar_solicitudes-administrativas', $permisos) || in_array('asignar-solicitudes-tech', $permisos);
 
-        if (!$esCreador && !$esResponsable && !$esSuperAdmin) {
+        if (!$esCreador && !$esResponsable && !$esSuperAdmin && !$esAsignador) {
             return response()->json([
                 'message' => 'No tiene permisos para ver esta solicitud'
             ], 403);
