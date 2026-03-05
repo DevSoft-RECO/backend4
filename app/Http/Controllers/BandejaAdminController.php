@@ -49,10 +49,18 @@ class BandejaAdminController extends Controller
     public function misAsignaciones(Request $request)
     {
         $user = Auth::user();
+        $roles = $user->roles ?? [];
 
         $query = Solicitud::query()
-            ->where('categoria_general_id', 2)
-            ->where('responsable_id', $user->id);
+            ->where('categoria_general_id', 2);
+
+        // Si es Super Admin, ve TODAS las que ya están asignadas a alguien.
+        // Si no es Super Admin, ve SOLAMENTE las que le asignaron a él.
+        if (in_array('Super Admin', $roles)) {
+            $query->whereNotNull('responsable_id');
+        } else {
+            $query->where('responsable_id', $user->id);
+        }
 
         if ($request->has('estado') && $request->estado) {
             $query->where('estado', $request->estado);
