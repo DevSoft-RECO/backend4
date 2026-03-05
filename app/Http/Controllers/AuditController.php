@@ -49,10 +49,7 @@ class AuditController extends Controller
 
         $solicitudes = $query->with(['creadoPor', 'responsable', 'agencia', 'categoriaGeneral'])
                              ->orderBy('id', 'desc')
-                             ->get(); // Using get() instead of paginate() for now, or paginate if preferred. I'll use get() to list all quickly as requested, but we should probably limit or paginate if large. If user requested 'se lista todos las solicitudes', get() will do, but let's paginate(50) for safety.
-
-        // Actually, let's paginate
-        $solicitudes = $query->paginate(50);
+                             ->paginate(10);
 
         return response()->json($solicitudes);
     }
