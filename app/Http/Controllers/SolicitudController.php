@@ -44,19 +44,9 @@ class SolicitudController extends Controller
 
         $query = Solicitud::query();
 
-        // 3. Solicitante normal / Jefe Agencia / Super Admin / Asignador Admin
+        // Filtro para usuarios que revisan las solicitudes asignadas a ellos (Técnicos/Asesores)
         if ($request->has('mis_asignaciones') && $request->mis_asignaciones == 'true') {
             $query->where('responsable_id', $user->id);
-        } else {
-            // Si NO es Super Admin NI tiene el permiso de asignar_solicitudes -> Aplicar filtro de Agencia/Creador
-            if (!in_array('Super Admin', $roles) && !in_array('asignar_solicitudes-administrativas', $permisos)) {
-                 $query->where(function($q) use ($agencia_id, $user) {
-                     if ($agencia_id) {
-                        $q->where('agencia_id', $agencia_id);
-                     }
-                     $q->orWhere('creado_por_id', $user->id);
-                 });
-            }
         }
 
         if ($request->has('estado') && $request->estado) {

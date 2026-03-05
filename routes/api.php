@@ -11,6 +11,7 @@ use App\Http\Controllers\Sincronizacion\AgencySyncController;
 use App\Http\Controllers\Sincronizacion\PuestoController;
 use App\Http\Controllers\Sincronizacion\PuestoSyncController;
 use App\Http\Controllers\MisSolicitudesController;
+use App\Http\Controllers\BandejaAdminController;
 
 Route::middleware('sso')->prefix('solicitudes')->group(function () {
     // Categorias Generales
@@ -27,6 +28,8 @@ Route::middleware('sso')->prefix('solicitudes')->group(function () {
 
     // Alias legacy or remove? Removing as per plan.
     Route::get('/mis-solicitudes', [MisSolicitudesController::class, 'index']);
+    Route::get('/bandeja-admin', [BandejaAdminController::class, 'index']);
+    Route::get('/bandeja-admin/mis-asignaciones', [BandejaAdminController::class, 'misAsignaciones']);
 
     Route::get('/', [SolicitudController::class, 'index']);
     Route::post('/', [SolicitudController::class, 'store']);
