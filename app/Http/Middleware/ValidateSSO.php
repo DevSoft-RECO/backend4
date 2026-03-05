@@ -95,9 +95,9 @@ class ValidateSSO
 
                 // Campos que vienen del Token (Source of Truth)
                 $mapeoDatos = [
-                    'username'   => $userData['username'] ?? $userData['email'],
-                    'name'       => $userData['name'],
-                    'email'      => $userData['email'],
+                    'username'   => $userData['username'] ?? $userData['email'] ?? 'user_' . $userData['id'],
+                    'name'       => $userData['name'] ?? 'Usuario Sin Nombre',
+                    'email'      => $userData['email'] ?? 'vacio_' . $userData['id'] . '@sin-correo.com',
                     'telefono'   => $userData['telefono'] ?? null,
                     // CORRECCION: Buscar ID local usando el ID remoto (madre_id)
                     'puesto_id'  => (!empty($userData['puesto_id']))
