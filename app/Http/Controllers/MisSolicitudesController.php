@@ -14,10 +14,14 @@ class MisSolicitudesController extends Controller
     public function index(Request $request)
     {
         $user = Auth::user();
+        $roles = $user->roles ?? [];
 
-        // Filtramos para obtener SOLO las creadas por este usuario
-        $query = Solicitud::query()
-            ->where('creado_por_id', $user->id);
+        $query = Solicitud::query();
+
+        // Filtramos para obtener SOLO las creadas por este usuario, a menos que sea Super Admin
+        if (!in_array('Super Admin', $roles)) {
+            $query->where('creado_por_id', $user->id);
+        }
 
         if ($request->has('estado') && $request->estado) {
             $query->where('estado', $request->estado);
