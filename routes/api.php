@@ -10,6 +10,7 @@ use App\Http\Controllers\Sincronizacion\AgenciaController;
 use App\Http\Controllers\Sincronizacion\AgencySyncController;
 use App\Http\Controllers\Sincronizacion\PuestoController;
 use App\Http\Controllers\Sincronizacion\PuestoSyncController;
+use App\Http\Controllers\MisSolicitudesController;
 
 Route::middleware('sso')->prefix('solicitudes')->group(function () {
     // Categorias Generales
@@ -25,6 +26,7 @@ Route::middleware('sso')->prefix('solicitudes')->group(function () {
     Route::delete('/subcategorias/{id}', [App\Http\Controllers\SolicitudSubcategoriaController::class, 'destroy']);
 
     // Alias legacy or remove? Removing as per plan.
+    Route::get('/mis-solicitudes', [MisSolicitudesController::class, 'index']);
 
     Route::get('/', [SolicitudController::class, 'index']);
     Route::post('/', [SolicitudController::class, 'store']);
