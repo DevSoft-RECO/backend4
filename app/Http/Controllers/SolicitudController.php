@@ -92,32 +92,34 @@ class SolicitudController extends Controller
             'agencia_id' => $user->agencia_id ?? null,
         ]);
 
-        // Procesar evidencias iniciales en GCS
-        $evidenciasPaths = [];
+        // Procesar evidencias y notificaciones en segundo plano (JOB)
+        $tempFiles = [];
         if ($request->hasFile('evidencias')) {
-            \Log::info("STORE DEBUG: Se recibieron " . count($request->file('evidencias')) . " archivos.");
-            foreach ($request->file('evidencias') as $file) {
-                $filename = uniqid() . '_' . $file->getClientOriginalName();
-                try {
-                    $path = $file->storeAs('gestiones/solicitudes/inicial', $filename, $this->disk);
+            \Log::info("STORE DEBUG: Se recibieron " . count($request->file('evidencias')) . " archivos para subir a GCS.");
+
+            $files = is_array($request->file('evidencias')) ? $request->file('evidencias') : [$request->file('evidencias')];
+            foreach ($files as $file) {
+                if ($file && $file->isValid() && $file->getSize() > 0) {
+                    $originalName = $file->getClientOriginalName();
+                    $filename = uniqid() . '_' . preg_replace('/[^a-zA-Z0-9.\-_]/', '', $originalName); // Sanitize filename
+
+                    // Guardar en almacenamiento LOCAL temporal (Milésimas de segundo)
+                    $path = $file->storeAs('gestiones/temp', $filename, 'local');
+
                     if ($path) {
-                        \Log::info("STORE DEBUG: Archivo subido exitosamente a: " . $path);
-                        $evidenciasPaths[] = $path;
-                    } else {
-                        \Log::error("STORE DEBUG: storeAs devolvió false para " . $filename);
+                        $tempFiles[] = [
+                            'path' => $path,
+                            'name' => $originalName
+                        ];
                     }
-                } catch (\Exception $e) {
-                    \Log::error("STORE ERROR: " . $e->getMessage());
                 }
             }
-            $solicitud->update(['evidencias_inicial' => $evidenciasPaths]);
-            \Log::info("STORE DEBUG: Update completado. Paths: " . json_encode($evidenciasPaths));
         } else {
-             \Log::warning("STORE DEBUG: No se recibieron archivos 'evidencias' en el request.");
+            \Log::info("STORE DEBUG: No se recibieron archivos 'evidencias' en el request.");
         }
 
-        // Notificar (Helper para facilitar futuro envío asíncrono)
-        $this->sendNotifications($solicitud);
+        // Despachar el Job a la cola. Pasamos la solicitud y los archivos temporales (si hay)
+        \App\Jobs\ProcessSolicitudBackgroundTasks::dispatch($solicitud, $tempFiles);
 
         return response()->json($solicitud, 201);
     }
@@ -790,21 +792,6 @@ class SolicitudController extends Controller
         return response()->json($solicitud->load('agencia'));
     }
 
-    /**
-     * Helper para centralizar el envío de notificaciones.
-     * En el futuro, esto puede ser reemplazado por Mail::queue() o un Job.
-     */
-    private function sendNotifications($solicitud)
-    {
-        // Enviar correo si es Tecnológica (ID 1)
-        if ($solicitud->categoria_general_id == 1) {
-            try {
-                \Illuminate\Support\Facades\Mail::to('soporte@yamankutxrl.com')->send(new \App\Mail\NuevaSolicitudTecnologica($solicitud));
-            } catch (\Exception $e) {
-                \Log::error("Error enviando correo tecnológica: " . $e->getMessage());
-            }
-        }
-    }
 }
 
 
