@@ -116,14 +116,8 @@ class SolicitudController extends Controller
              \Log::warning("STORE DEBUG: No se recibieron archivos 'evidencias' en el request.");
         }
 
-        // Enviar correo si es Tecnológica (ID 1)
-        if ($solicitud->categoria_general_id == 1) {
-            try {
-                \Illuminate\Support\Facades\Mail::to('soporte@yamankutxrl.com')->send(new \App\Mail\NuevaSolicitudTecnologica($solicitud));
-            } catch (\Exception $e) {
-                \Log::error("Error enviando correo tecnológica: " . $e->getMessage());
-            }
-        }
+        // Notificar (Helper para facilitar futuro envío asíncrono)
+        $this->sendNotifications($solicitud);
 
         return response()->json($solicitud, 201);
     }
@@ -794,6 +788,22 @@ class SolicitudController extends Controller
         $solicitud->save();
 
         return response()->json($solicitud->load('agencia'));
+    }
+
+    /**
+     * Helper para centralizar el envío de notificaciones.
+     * En el futuro, esto puede ser reemplazado por Mail::queue() o un Job.
+     */
+    private function sendNotifications($solicitud)
+    {
+        // Enviar correo si es Tecnológica (ID 1)
+        if ($solicitud->categoria_general_id == 1) {
+            try {
+                \Illuminate\Support\Facades\Mail::to('soporte@yamankutxrl.com')->send(new \App\Mail\NuevaSolicitudTecnologica($solicitud));
+            } catch (\Exception $e) {
+                \Log::error("Error enviando correo tecnológica: " . $e->getMessage());
+            }
+        }
     }
 }
 
