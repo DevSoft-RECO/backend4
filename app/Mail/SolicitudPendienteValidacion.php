@@ -23,7 +23,7 @@ class SolicitudPendienteValidacion extends Mailable
     public function __construct(Solicitud $solicitud)
     {
         $this->solicitud = $solicitud;
-        $frontendUrl = env('APP_URL_FRONTEND', 'http://localhost:5173');
+        $frontendUrl = config('app.url_frontend', 'http://localhost:5173');
         $this->urlDetalle = "{$frontendUrl}/admin/solicitudes/trabajar/{$solicitud->id}";
     }
 

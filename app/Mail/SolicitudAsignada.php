@@ -24,7 +24,7 @@ class SolicitudAsignada extends Mailable
     {
         $this->solicitud = $solicitud;
         // URL para ver la solicitud en el Frontend
-        $frontendUrl = env('APP_URL_FRONTEND', 'http://localhost:5176');
+        $frontendUrl = config('app.url_frontend', 'http://localhost:5176');
         $this->urlSolicitud = "{$frontendUrl}/admin/solicitudes/trabajar/{$solicitud->id}";
     }
 

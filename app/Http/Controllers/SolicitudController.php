@@ -244,25 +244,8 @@ class SolicitudController extends Controller
             'tipo_accion' => 'comentario'
         ]);
 
-        // Enviar correo al responsable
-        if ($responsableEmail) {
-            try {
-                \Log::info("Intentando enviar correo a: " . $responsableEmail);
-                // Inyectamos el email manualmente o dejamos que el Mailable lo saque del modelo?
-                // El Mailable SolicitudAsignada probablemente usa $solicitud->responsable_email.
-                // Tendremos que actualizar el Mailable tambien si usa la propiedad antigua,
-                // O asegurarnos que $solicitud->responsable->email este disponible.
-                // Por seguridad, pasamos el objeto solicitud que ya tiene relacion si hacemos load.
-                $solicitud->load('responsable');
-                Mail::to($responsableEmail)->send(new SolicitudAsignada($solicitud));
-                \Log::info("Correo enviado exitosamente a: " . $responsableEmail);
-            } catch (\Exception $e) {
-                \Log::error("Error enviando correo de asignación: " . $e->getMessage());
-                \Log::error($e->getTraceAsString());
-            }
-        } else {
-            \Log::info("No se envió correo: Email del responsable no proporcionado.");
-        }
+        // Despachar notificación en segundo plano (Email o SMS según responsable_tipo)
+        \App\Jobs\NotifySolicitudAsignadaJob::dispatch($solicitud);
 
         return response()->json($solicitud);
     }
