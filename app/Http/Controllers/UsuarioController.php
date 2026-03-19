@@ -36,9 +36,9 @@ class UsuarioController extends Controller
             'puesto' => $user->puesto,
             'agencia' => $user->agencia,
             'avatar' => $user->avatar, // Propiedad inyectada en Middleware
-            'roles' => $user->roles,   // Propiedad inyectada en Middleware
-            'permissions' => $user->permisos, // Frontend espera 'permissions'
-            'permisos' => $user->permisos,
+            'roles' => $user->roles ?? $user->roles_list ?? [],   // Propiedad inyectada en Middleware
+            'permissions' => $user->permissions ?? $user->permissions_list ?? $user->permisos ?? [], // Frontend espera 'permissions'
+            'permisos' => $user->permisos ?? $user->permissions_list ?? [],
         ]);
     }
 }

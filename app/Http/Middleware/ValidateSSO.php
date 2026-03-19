@@ -51,6 +51,23 @@ class ValidateSSO
             if ($response->successful()) {
                 // ÉXITO: Tenemos conexión. Usamos los datos completos del usuario (Roles actualizados).
                 $userData = $response->json();
+                
+                // Si la Madre utiliza API Resources (ej. UserResource), los datos pueden venir envueltos en 'data'
+                if (isset($userData['data'])) {
+                    $userData = $userData['data'];
+                }
+
+                // Aplanar roles y permisos si vienen como arrays de objetos de Spatie (ej. [['id'=>1, 'name'=>'Super Admin']])
+                if (isset($userData['roles']) && is_array($userData['roles'])) {
+                    $userData['roles'] = array_map(function($r) { return is_array($r) ? ($r['name'] ?? $r) : $r; }, $userData['roles']);
+                }
+                if (isset($userData['permisos']) && is_array($userData['permisos'])) {
+                    $userData['permisos'] = array_map(function($p) { return is_array($p) ? ($p['name'] ?? $p) : $p; }, $userData['permisos']);
+                }
+                if (isset($userData['permissions']) && is_array($userData['permissions'])) {
+                    $userData['permissions'] = array_map(function($p) { return is_array($p) ? ($p['name'] ?? $p) : $p; }, $userData['permissions']);
+                }
+
                 $userData['id'] = $decoded->sub; // Aseguramos que el ID venga del token
                 $user = new GenericUser($userData);
             } else {
@@ -141,6 +158,17 @@ class ValidateSSO
                 // o simplemente acceder a $request->user()->roles como propiedad dinámica.
                 $localUser->roles = $userData['roles'] ?? [];
                 $localUser->permisos = $userData['permisos'] ?? [];
+                
+                // ESTANDARIZACIÓN PARA EL NUEVO FRONTEND PKCE: 
+                // Aseguramos que existan las propiedades que usan los "Gates" modernos
+                $localUser->roles_list = $userData['roles'] ?? [];
+                $localUser->permissions_list = $userData['permisos'] ?? [];
+                
+                // Opcional: Si el frontend moderno pide 'permissions' en inglés
+                if (!isset($localUser->permissions)) {
+                    $localUser->permissions = $userData['permisos'] ?? [];
+                }
+
                 $localUser->avatar = $userData['avatar'] ?? null;
 
                 // Establecer el modelo User real en la sesión
