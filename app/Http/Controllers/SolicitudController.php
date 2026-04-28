@@ -775,6 +775,72 @@ class SolicitudController extends Controller
         return response()->json($solicitud->load('agencia'));
     }
 
+    public function exportCsv(Request $request)
+    {
+        $user = Auth::user();
+        $query = Solicitud::query();
+
+        // Aplicar los mismos filtros que en el index
+        if ($request->has('mis_asignaciones') && $request->mis_asignaciones == 'true') {
+            $query->where('responsable_id', $user->id);
+        }
+
+        if ($request->has('estado') && $request->estado) {
+            $query->where('estado', $request->estado);
+        }
+
+        if ($request->has('categoria_general_id')) {
+            $query->where('categoria_general_id', $request->categoria_general_id);
+        }
+
+        $solicitudes = $query->with(['creadoPor', 'responsable', 'agencia', 'subcategoria'])->orderBy('id', 'desc')->get();
+
+        $callback = function() use ($solicitudes) {
+            $file = fopen('php://output', 'w');
+            fprintf($file, chr(0xEF).chr(0xBB).chr(0xBF)); // BOM para UTF-8 (Excel friendly)
+            
+            // Encabezados
+            fputcsv($file, [
+                'ID',
+                'Fecha Creacion',
+                'Titulo',
+                'Estado',
+                'Agencia',
+                'Area/Ubicacion',
+                'Solicitante',
+                'Responsable',
+                'Categoria',
+                'Fecha Asignacion',
+                'Fecha Toma Caso',
+                'Descripcion'
+            ]);
+
+            foreach ($solicitudes as $sol) {
+                fputcsv($file, [
+                    $sol->id,
+                    $sol->created_at->format('d/m/Y H:i'),
+                    $sol->titulo,
+                    ucwords(str_replace('_', ' ', $sol->estado)),
+                    $sol->agencia->nombre ?? 'N/A',
+                    $sol->area ?? 'N/A',
+                    $sol->creadoPor->name ?? 'N/A',
+                    $sol->responsable->name ?? 'N/A',
+                    $sol->subcategoria->nombre ?? 'N/A',
+                    $sol->fecha_asignacion ? $sol->fecha_asignacion->format('d/m/Y H:i') : 'N/A',
+                    $sol->fecha_toma_caso ? $sol->fecha_toma_caso->format('d/m/Y H:i') : 'N/A',
+                    $sol->descripcion
+                ]);
+            }
+            fclose($file);
+        };
+
+        $headers = [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => 'attachment; filename="reporte_solicitudes_' . date('Ymd_His') . '.csv"',
+        ];
+
+        return response()->stream($callback, 200, $headers);
+    }
 }
 
 

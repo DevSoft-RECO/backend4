@@ -31,20 +31,21 @@ Route::middleware('sso')->prefix('solicitudes')->group(function () {
     Route::get('/bandeja-admin', [BandejaAdminController::class, 'index']);
     Route::get('/bandeja-admin/mis-asignaciones', [BandejaAdminController::class, 'misAsignaciones']);
 
+    Route::get('/export', [SolicitudController::class, 'exportCsv']);
     Route::get('/', [SolicitudController::class, 'index']);
     Route::post('/', [SolicitudController::class, 'store']);
-    Route::delete('/{id}', [SolicitudController::class, 'destroy']);
-    Route::get('/{id}', [SolicitudController::class, 'show']);
-    Route::put('/{id}/asignar', [SolicitudController::class, 'assign']);
-    Route::put('/{id}/tomar', [SolicitudController::class, 'take']);
-    Route::post('/{id}/seguimiento', [SolicitudController::class, 'addSeguimiento']);
-    Route::post('/{id}/validar', [SolicitudController::class, 'validateValidation']);
-    Route::get('/{id}/file-url', [SolicitudController::class, 'getFileUrl']);
-    Route::put('/{id}/agencia', [SolicitudController::class, 'updateAgencia']);
+    Route::delete('/{id}', [SolicitudController::class, 'destroy'])->where('id', '[0-9]+');
+    Route::get('/{id}', [SolicitudController::class, 'show'])->where('id', '[0-9]+');
+    Route::put('/{id}/asignar', [SolicitudController::class, 'assign'])->where('id', '[0-9]+');
+    Route::put('/{id}/tomar', [SolicitudController::class, 'take'])->where('id', '[0-9]+');
+    Route::post('/{id}/seguimiento', [SolicitudController::class, 'addSeguimiento'])->where('id', '[0-9]+');
+    Route::post('/{id}/validar', [SolicitudController::class, 'validateValidation'])->where('id', '[0-9]+');
+    Route::get('/{id}/file-url', [SolicitudController::class, 'getFileUrl'])->where('id', '[0-9]+');
+    Route::put('/{id}/agencia', [SolicitudController::class, 'updateAgencia'])->where('id', '[0-9]+');
 
     // Gestión de Evidencias (Subir/Eliminar sueltas)
-    Route::post('/{id}/evidence', [SolicitudController::class, 'addEvidence']);
-    Route::delete('/{id}/evidence', [SolicitudController::class, 'deleteEvidence']);
+    Route::post('/{id}/evidence', [SolicitudController::class, 'addEvidence'])->where('id', '[0-9]+');
+    Route::delete('/{id}/evidence', [SolicitudController::class, 'deleteEvidence'])->where('id', '[0-9]+');
 
 });
 
