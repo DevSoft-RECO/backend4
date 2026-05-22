@@ -36,8 +36,36 @@ class User extends Authenticatable
         'telefono',
         'puesto_id',
         'agencia_id',
+        'roles_list',
+        'permissions_list',
+        'jti',
+        'avatar',
         'updated_at' // Permitir actualización explícita si es necesario
     ];
+
+    /**
+     * Get the attributes that should be cast.
+     */
+    protected function casts(): array
+    {
+        return [
+            'roles_list' => 'array',
+            'permissions_list' => 'array',
+        ];
+    }
+
+    // --- Helpers de Autorización Rápidos ---
+
+    public function hasRole($role) {
+        if (!is_array($this->roles_list)) return false;
+        return in_array($role, $this->roles_list);
+    }
+
+    public function hasPermissionTo($permission) {
+        if ($this->hasRole('Super Admin')) return true;
+        if (!is_array($this->permissions_list)) return false;
+        return in_array($permission, $this->permissions_list);
+    }
 
     public function puesto()
     {
@@ -47,5 +75,17 @@ class User extends Authenticatable
     public function agencia()
     {
         return $this->belongsTo(Agencia::class);
+    }
+
+    // --- Compatibilidad con Laravel Auth ---
+
+    public function tokenCan($ability)
+    {
+        return $this->hasPermissionTo($ability);
+    }
+
+    public function currentAccessToken()
+    {
+        return null;
     }
 }

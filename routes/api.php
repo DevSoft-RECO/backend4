@@ -12,6 +12,7 @@ use App\Http\Controllers\Sincronizacion\PuestoController;
 use App\Http\Controllers\Sincronizacion\PuestoSyncController;
 use App\Http\Controllers\MisSolicitudesController;
 use App\Http\Controllers\BandejaAdminController;
+use App\Http\Controllers\Auth\SSOController;
 
 Route::middleware('sso')->prefix('solicitudes')->group(function () {
     // Categorias Generales
@@ -59,7 +60,7 @@ Route::middleware('sso')->prefix('audit')->group(function () {
 Route::middleware('sso')->get('/usuarios', [\App\Http\Controllers\UsuarioController::class, 'index']);
 Route::middleware('sso')->get('/usuarios', [\App\Http\Controllers\UsuarioController::class, 'index']);
 Route::middleware('sso')->get('/puestos', [PuestoController::class, 'index']);
-Route::middleware('sso')->get('/me', [\App\Http\Controllers\UsuarioController::class, 'me']);
+Route::middleware('sso')->get('/me', [SSOController::class, 'me']);
 
 // Asegúrate de que el middleware 'sso' esté registrado en bootstrap/app.php
 Route::middleware('sso')->group(function () {

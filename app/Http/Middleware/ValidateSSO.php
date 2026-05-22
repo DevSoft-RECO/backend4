@@ -8,15 +8,12 @@ use Symfony\Component\HttpFoundation\Response;
 use Firebase\JWT\JWT;
 use Firebase\JWT\Key;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Auth\GenericUser;
-use Exception;
+use App\Models\User;
 
 class ValidateSSO
 {
     public function handle(Request $request, Closure $next): Response
     {
-        // Obtener el token del encabezado Authorization: Bearer ...
         $token = $request->bearerToken();
 
         if (!$token) {
@@ -24,164 +21,38 @@ class ValidateSSO
         }
 
         try {
-            // 1. Validar existencia de la Llave Pública
+            // Cargar la llave pública almacenada localmente
             $publicKeyPath = storage_path('oauth-public.key');
 
             if (!file_exists($publicKeyPath)) {
-                throw new Exception("Error de servidor: Falta llave pública de validación.");
+                throw new \Exception("Falta la llave pública oauth-public.key en el servidor hijo");
             }
 
             $publicKey = file_get_contents($publicKeyPath);
-            JWT::$leeway = 60; // Margen de 60s por si los relojes de los servidores no están sincronizados
+            JWT::$leeway = 60; // Mitigar desincronizaciones de reloj entre servidores
 
-            // 2. Decodificar y Validar firma del Token (RS256)
+            // 1. Decodificar el Token en memoria de forma local (RS256)
             $decoded = JWT::decode($token, new Key($publicKey, 'RS256'));
 
-            // 3. Obtener URL de la App Madre
-            // NOTA: Usamos config() porque en producción env() devuelve null si la caché está activa.
-            $motherUrl = config('services.app_madre.url');
+            // 2. Carga rápida pasiva desde la base de datos local
+            $dbUser = User::with(['puesto', 'agencia'])->where('id', $decoded->sub)->first();
 
-            if (empty($motherUrl)) {
-                throw new Exception("Configuración incompleta: URL Madre no definida.");
-            }
-
-            // 4. Intentar obtener datos frescos (Roles/Permisos) desde la Madre
-            $response = Http::withToken($token)->get("{$motherUrl}/api/me");
-
-            if ($response->successful()) {
-                // ÉXITO: Tenemos conexión. Usamos los datos completos del usuario (Roles actualizados).
-                $userData = $response->json();
-                
-                // Si la Madre utiliza API Resources (ej. UserResource), los datos pueden venir envueltos en 'data'
-                if (isset($userData['data'])) {
-                    $userData = $userData['data'];
-                }
-
-                // Aplanar roles y permisos si vienen como arrays de objetos de Spatie (ej. [['id'=>1, 'name'=>'Super Admin']])
-                if (isset($userData['roles']) && is_array($userData['roles'])) {
-                    $userData['roles'] = array_map(function($r) { return is_array($r) ? ($r['name'] ?? $r) : $r; }, $userData['roles']);
-                }
-                if (isset($userData['permisos']) && is_array($userData['permisos'])) {
-                    $userData['permisos'] = array_map(function($p) { return is_array($p) ? ($p['name'] ?? $p) : $p; }, $userData['permisos']);
-                }
-                if (isset($userData['permissions']) && is_array($userData['permissions'])) {
-                    $userData['permissions'] = array_map(function($p) { return is_array($p) ? ($p['name'] ?? $p) : $p; }, $userData['permissions']);
-                }
-
-                $userData['id'] = $decoded->sub; // Aseguramos que el ID venga del token
-                $user = new GenericUser($userData);
+            if ($dbUser) {
+                // Loguear usuario real de la base de datos
+                Auth::setUser($dbUser);
             } else {
-                // FALLBACK: Si la Madre está caída o lenta, no bloqueamos al usuario.
-                // Usamos los datos básicos que vienen incrustados en el token JWT.
-                $userData = (array) $decoded;
-                $userData['id'] = $decoded->sub;
-                $user = new GenericUser($userData);
+                // 3. Fallback de Red de Seguridad (Usuario no sincronizado en DB local aún)
+                // Creamos un modelo virtual no persistido con sus roles/permisos del JWT
+                $user = new User([
+                    'id' => $decoded->sub,
+                    'roles_list' => $decoded->roles ?? [],
+                    'permissions_list' => $decoded->permissions ?? [],
+                ]);
+                Auth::setUser($user);
             }
 
-            // ASEGURAR CAMPOS MINIMOS para evitar error "Undefined array key"
-            // GenericUser no tiene __get magic que devuelva null por defecto en arrays, falla si no existe la key.
-            // Por tanto, inyectamos valores vacíos si faltan.
-            $defaults = [
-                'cargo' => null,
-                'puesto' => null,
-                'roles' => [],
-                'permisos' => [],
-                'idagencia' => null,
-                'name' => 'Usuario',
-                'email' => ''
-            ];
-
-            // Reconstruimos el GenericUser con los defaults mezclados
-            // Ojo: GenericUser es inmutable en sus atributos (protected),
-            // asi que mejor modificamos $userData ANTES de crear el objeto
-            // pero como ya lo creamos arriba en dos ramas, lo refactorizamos un poco:
-
-            $userData = array_merge($defaults, $userData);
-
-            // Mapper: permissions (English/Mother) -> permisos (Local/Spanish)
-            if (!empty($userData['permissions']) && empty($userData['permisos'])) {
-                $userData['permisos'] = $userData['permissions'];
-            }
-
-            $user = new GenericUser($userData);
-
-            // Sincronización JIT (Just-In-Time) con base de datos local
-            try {
-                $userId = $userData['id'];
-                $localUser = \App\Models\User::find($userId);
-
-                // Campos que vienen del Token (Source of Truth)
-                $mapeoDatos = [
-                    'username'   => $userData['username'] ?? $userData['email'] ?? 'user_' . $userData['id'],
-                    'name'       => $userData['name'] ?? 'Usuario Sin Nombre',
-                    'email'      => $userData['email'] ?? 'vacio_' . $userData['id'] . '@sin-correo.com',
-                    'telefono'   => $userData['telefono'] ?? null,
-                    // CORRECCION: Buscar ID local usando el ID remoto (madre_id)
-                    'puesto_id'  => (!empty($userData['puesto_id']))
-                                    ? \App\Models\Puesto::where('puesto_madre_id', $userData['puesto_id'])->value('id')
-                                    : null,
-
-                    'agencia_id' => (!empty($userData['agencia_id']))
-                                    ? \App\Models\Agencia::where('agencia_madre_id', $userData['agencia_id'])->value('id')
-                                    : ((!empty($userData['idagencia']))
-                                        ? \App\Models\Agencia::where('agencia_madre_id', $userData['idagencia'])->value('id')
-                                        : null),
-                ];
-
-                $needsUpdate = false;
-
-                if (!$localUser) {
-                    // Si no existe, creamos
-                    $localUser = new \App\Models\User();
-                    $localUser->id = $userId;
-                    $needsUpdate = true;
-                }
-
-                if (!$needsUpdate) {
-                    // Si existe, comparamos campos para ver si algo cambió
-                    foreach ($mapeoDatos as $key => $val) {
-                        // Comparación laxa para evitar falsos positivos por tipos (int vs string)
-                        if ($localUser->$key != $val) {
-                            $needsUpdate = true;
-                            break;
-                        }
-                    }
-                }
-
-                if ($needsUpdate) {
-                    $localUser->fill($mapeoDatos);
-                    $localUser->save();
-                }
-
-                // Inyectamos los Roles y Permisos (que viven en memoria/token) al modelo Eloquent
-                // Esto permite usar $request->user()->can('...') si se usa un Gate que lea esto,
-                // o simplemente acceder a $request->user()->roles como propiedad dinámica.
-                $localUser->roles = $userData['roles'] ?? [];
-                $localUser->permisos = $userData['permisos'] ?? [];
-                
-                // ESTANDARIZACIÓN PARA EL NUEVO FRONTEND PKCE: 
-                // Aseguramos que existan las propiedades que usan los "Gates" modernos
-                $localUser->roles_list = $userData['roles'] ?? [];
-                $localUser->permissions_list = $userData['permisos'] ?? [];
-                
-                // Opcional: Si el frontend moderno pide 'permissions' en inglés
-                if (!isset($localUser->permissions)) {
-                    $localUser->permissions = $userData['permisos'] ?? [];
-                }
-
-                $localUser->avatar = $userData['avatar'] ?? null;
-
-                // Establecer el modelo User real en la sesión
-                Auth::setUser($localUser);
-
-            } catch (Exception $ex) {
-                 // Opción B: Lanzar error (Mejor para debugging inicial)
-               throw new Exception("Error sincronizando usuario local: " . $ex->getMessage());
-            }
-
-        } catch (Exception $e) {
-            // Si el token es inválido, expirado o manipulado, devolvemos 401
-            return response()->json(['message' => 'Acceso Denegado: ' . $e->getMessage()], 401);
+        } catch (\Exception $e) {
+            return response()->json(['message' => 'Acceso Denegado (SSO): ' . $e->getMessage()], 401);
         }
 
         return $next($request);
