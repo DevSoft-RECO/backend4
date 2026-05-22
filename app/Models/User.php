@@ -43,6 +43,8 @@ class User extends Authenticatable
         'updated_at' // Permitir actualización explícita si es necesario
     ];
 
+    protected $appends = ['idagencia', 'roles', 'permissions', 'permisos'];
+
     /**
      * Get the attributes that should be cast.
      */
@@ -52,6 +54,28 @@ class User extends Authenticatable
             'roles_list' => 'array',
             'permissions_list' => 'array',
         ];
+    }
+
+    // --- Accesores de Compatibilidad Histórica ---
+
+    public function getIdagenciaAttribute()
+    {
+        return $this->agencia_id;
+    }
+
+    public function getRolesAttribute()
+    {
+        return $this->roles_list ?? [];
+    }
+
+    public function getPermissionsAttribute()
+    {
+        return $this->permissions_list ?? [];
+    }
+
+    public function getPermisosAttribute()
+    {
+        return $this->permissions_list ?? [];
     }
 
     // --- Helpers de Autorización Rápidos ---

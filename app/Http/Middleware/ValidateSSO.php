@@ -47,6 +47,7 @@ class ValidateSSO
                     'id' => $decoded->sub,
                     'roles_list' => $decoded->roles ?? [],
                     'permissions_list' => $decoded->permissions ?? [],
+                    'agencia_id' => $decoded->idagencia ?? $decoded->agencia_id ?? null,
                 ]);
                 Auth::setUser($user);
             }
