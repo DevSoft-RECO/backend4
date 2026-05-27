@@ -23,6 +23,6 @@ Route::post('/enviar-mensaje-tigo', [\App\Http\Controllers\SmsController::class,
 // Ruta Anti-JSON / Rescate de Sesión Expirada
 Route::get('/login', function () {
     // Si falla el JWT y Laravel intenta redirigir al "login", lo mandamos de vuelta al portal Madre
-    $frontendUrl = env('APP_URL_FRONTEND', 'http://localhost:5173');
+    $frontendUrl = config('services.app_frontend.url');
     return redirect($frontendUrl . '/login?session_expired=true');
 })->name('login');

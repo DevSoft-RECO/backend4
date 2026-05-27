@@ -39,4 +39,8 @@ return [
         'url' => env('APP_MADRE_URL'),
     ],
 
+    'app_frontend' => [
+        'url' => env('APP_URL_FRONTEND'),
+    ],
+
 ];
