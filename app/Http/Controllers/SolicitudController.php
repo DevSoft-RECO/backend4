@@ -92,6 +92,38 @@ class SolicitudController extends Controller
             'agencia_id' => $user->agencia_id ?? null,
         ]);
 
+        // [NUEVO] Lógica de Notificaciones Centralizadas Cruzadas (Tickets Tecnológicos)
+        if ($solicitud->categoria_general_id) {
+            $categoria = \App\Models\SolicitudCategoriaGeneral::find($solicitud->categoria_general_id);
+
+            // Verificación flexible e insensible a mayúsculas/acentos
+            if ($categoria && stripos($categoria->nombre, 'tecnolog') !== false) {
+                try {
+                    $motherApiUrl = config('services.mother.api_url') ?? 'http://localhost:8000';
+                    $serviceToken = config('services.mother.service_token') ?? 'token_secreto_yamankutx_notificaciones';
+
+                    $descripcionSegura = strip_tags($solicitud->descripcion);
+                    if (mb_strlen($descripcionSegura) > 1000) {
+                        $descripcionSegura = mb_substr($descripcionSegura, 0, 995) . '...';
+                    }
+                    $mensajeCompleto = "El ticket #{$solicitud->id} '{$solicitud->titulo}' requiere atención técnica. Detalle: {$descripcionSegura}";
+
+                    // Disparo HTTP asíncrono no-bloqueante con timeout ultra corto
+                    \Illuminate\Support\Facades\Http::withHeaders([
+                        'X-SSO-Service-Token' => $serviceToken,
+                        'Accept' => 'application/json'
+                    ])->timeout(2)->post("{$motherApiUrl}/api/sso/notifications/broadcast", [
+                        'target_role' => 'Super Admin',
+                        'title' => '¡Nuevo Ticket Tecnológico!',
+                        'message' => $mensajeCompleto,
+                        'app' => 'Tickets'
+                    ]);
+                } catch (\Exception $e) {
+                    \Log::error("Error al emitir notificación de ticket tecnológico: " . $e->getMessage());
+                }
+            }
+        }
+
         // Procesar evidencias y notificaciones en segundo plano (JOB)
         $tempFiles = [];
         if ($request->hasFile('evidencias')) {
@@ -462,6 +494,29 @@ class SolicitudController extends Controller
             'estado' => $nuevoEstado,
             'tipo_solucion' => ($request->accion === 'cerrar') ? ($request->tipo_solucion ?? 'total') : null
         ]);
+
+        // [FUTURA FASE / PREPARADO] Notificar directamente al usuario creador por su ID
+        try {
+            $motherApiUrl = config('services.mother.api_url') ?? 'http://localhost:8000';
+            $serviceToken = config('services.mother.service_token') ?? 'token_secreto_yamankutx_notificaciones';
+
+            $tituloNotif = $request->accion === 'cerrar' ? '¡Tu Ticket ha sido Resuelto!' : 'Tu Ticket ha sido Reabierto';
+            $msgNotif = $request->accion === 'cerrar'
+                ? "El ticket #{$solicitud->id} '{$solicitud->titulo}' fue resuelto y cerrado."
+                : "El ticket #{$solicitud->id} '{$solicitud->titulo}' requiere más información y fue reabierto.";
+
+            \Illuminate\Support\Facades\Http::withHeaders([
+                'X-SSO-Service-Token' => $serviceToken,
+                'Accept' => 'application/json'
+            ])->timeout(2)->post("{$motherApiUrl}/api/sso/notifications/broadcast", [
+                'target_user_id' => $solicitud->creado_por_id, // Apuntado directo al ID del creador
+                'title' => $tituloNotif,
+                'message' => $msgNotif,
+                'app' => 'Tickets'
+            ]);
+        } catch (\Exception $e) {
+            \Log::error("Error al notificar cierre/reapertura al usuario {$solicitud->creado_por_id}: " . $e->getMessage());
+        }
 
         $textoComentario = $request->comentario ?? 'Sin comentario adicional.';
         if ($request->accion === 'cerrar') {

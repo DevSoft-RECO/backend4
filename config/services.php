@@ -43,4 +43,10 @@ return [
         'url' => env('APP_URL_FRONTEND'),
     ],
 
+    'mother' => [
+        'api_url' => env('SSO_MOTHER_API_URL', 'http://localhost:8000'),
+        'service_token' => env('SSO_SERVICE_TOKEN', 'token_secreto_yamankutx_notificaciones'),
+    ],
+
 ];
+
