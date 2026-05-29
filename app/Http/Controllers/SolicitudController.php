@@ -433,6 +433,24 @@ class SolicitudController extends Controller
                 'estado' => 'pendiente_validacion'
             ]);
 
+            // [NUEVO] Notificación Real-Time al Creador del Ticket para que valide el caso
+            try {
+                $motherApiUrl = config('services.mother.api_url') ?? 'http://localhost:8000';
+                $serviceToken = config('services.mother.service_token') ?? 'token_secreto_yamankutx_notificaciones';
+
+                \Illuminate\Support\Facades\Http::withHeaders([
+                    'X-SSO-Service-Token' => $serviceToken,
+                    'Accept' => 'application/json'
+                ])->timeout(2)->post("{$motherApiUrl}/api/sso/notifications/broadcast", [
+                    'target_user_id' => $solicitud->creado_por_id, // Dirigido directamente al creador
+                    'title' => '¡Ticket Pendiente de Validar!',
+                    'message' => "Tu ticket '{$solicitud->titulo}' está resuelto y listo para ser validado.",
+                    'app' => 'Tickets'
+                ]);
+            } catch (\Exception $e) {
+                \Log::error("Error al enviar notificación real-time de validación al creador {$solicitud->creado_por_id}: " . $e->getMessage());
+            }
+
             // Send Notification Email
             // Send Notification Email
             if ($solicitud->creadoPor && $solicitud->creadoPor->email) {
@@ -495,27 +513,29 @@ class SolicitudController extends Controller
             'tipo_solucion' => ($request->accion === 'cerrar') ? ($request->tipo_solucion ?? 'total') : null
         ]);
 
-        // [FUTURA FASE / PREPARADO] Notificar directamente al usuario creador por su ID
-        try {
-            $motherApiUrl = config('services.mother.api_url') ?? 'http://localhost:8000';
-            $serviceToken = config('services.mother.service_token') ?? 'token_secreto_yamankutx_notificaciones';
+        // Notificar en tiempo real al responsable del seguimiento/atención del ticket
+        if ($solicitud->responsable_id) {
+            try {
+                $motherApiUrl = config('services.mother.api_url') ?? 'http://localhost:8000';
+                $serviceToken = config('services.mother.service_token') ?? 'token_secreto_yamankutx_notificaciones';
 
-            $tituloNotif = $request->accion === 'cerrar' ? '¡Tu Ticket ha sido Resuelto!' : 'Tu Ticket ha sido Reabierto';
-            $msgNotif = $request->accion === 'cerrar'
-                ? "El ticket #{$solicitud->id} '{$solicitud->titulo}' fue resuelto y cerrado."
-                : "El ticket #{$solicitud->id} '{$solicitud->titulo}' requiere más información y fue reabierto.";
+                $tituloNotif = $request->accion === 'cerrar' ? '¡Ticket Cerrado!' : 'Ticket Reabierto';
+                $msgNotif = $request->accion === 'cerrar'
+                    ? "El ticket #{$solicitud->id} '{$solicitud->titulo}' fue validado y cerrado por el usuario."
+                    : "El ticket #{$solicitud->id} '{$solicitud->titulo}' fue reabierto por el usuario y requiere seguimiento.";
 
-            \Illuminate\Support\Facades\Http::withHeaders([
-                'X-SSO-Service-Token' => $serviceToken,
-                'Accept' => 'application/json'
-            ])->timeout(2)->post("{$motherApiUrl}/api/sso/notifications/broadcast", [
-                'target_user_id' => $solicitud->creado_por_id, // Apuntado directo al ID del creador
-                'title' => $tituloNotif,
-                'message' => $msgNotif,
-                'app' => 'Tickets'
-            ]);
-        } catch (\Exception $e) {
-            \Log::error("Error al notificar cierre/reapertura al usuario {$solicitud->creado_por_id}: " . $e->getMessage());
+                \Illuminate\Support\Facades\Http::withHeaders([
+                    'X-SSO-Service-Token' => $serviceToken,
+                    'Accept' => 'application/json'
+                ])->timeout(2)->post("{$motherApiUrl}/api/sso/notifications/broadcast", [
+                    'target_user_id' => $solicitud->responsable_id, // Dirigido directamente al responsable del seguimiento
+                    'title' => $tituloNotif,
+                    'message' => $msgNotif,
+                    'app' => 'Tickets'
+                ]);
+            } catch (\Exception $e) {
+                \Log::error("Error al notificar cierre/reapertura al responsable {$solicitud->responsable_id}: " . $e->getMessage());
+            }
         }
 
         $textoComentario = $request->comentario ?? 'Sin comentario adicional.';
