@@ -1,0 +1,131 @@
+<?php
+
+namespace App\Http\Controllers;
+
+// ==========================================
+// === BACKUP SYSTEM ===
+// Controlador Interno de Respaldos para la Hija
+// ==========================================
+
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+
+class InternalBackupController extends Controller
+{
+    /**
+     * Inicia el proceso de backup en segundo plano.
+     * POST /api/internal/backup
+     */
+    public function generate(Request $request)
+    {
+        $token = config('backups.token');
+        $signature = $request->header('X-Signature');
+        $timestamp = $request->header('X-Timestamp');
+
+        // 1. Validar expiración (máximo 5 minutos)
+        if (abs(time() - (int)$timestamp) > 300) {
+            return response()->json(['error' => 'Petición expirada.'], 403);
+        }
+
+        // 2. Validar firma HMAC-SHA256
+        $payload = json_encode([
+            'timestamp' => (int)$timestamp,
+            'callback_url' => $request->input('callback_url'),
+            'user_id' => (int)$request->input('user_id'),
+            'app_key' => $request->input('app_key'),
+        ]);
+
+        $expectedSignature = hash_hmac('sha256', $timestamp . $payload, $token);
+
+        if (!hash_equals($expectedSignature, (string)$signature)) {
+            Log::error("Backup Hija: Firma no autorizada o manipulada.");
+            return response()->json(['error' => 'No autorizado. Firma no coincide.'], 401);
+        }
+
+        // 3. Preparar nombre de archivo
+        $isWindows = strtoupper(substr(PHP_OS, 0, 3)) === 'WIN';
+        $extension = $isWindows ? '.sql' : '.sql.gz'; // Laragon puede no tener gzip por defecto
+        $filename = 'backup_' . $request->input('app_key') . '_' . date('Ymd_His') . $extension;
+
+        // Crear carpeta de respaldo si no existe
+        $backupDir = storage_path('app/backups');
+        if (!file_exists($backupDir)) {
+            mkdir($backupDir, 0755, true);
+        }
+
+        // Limpieza de respaldos huérfanos anteriores (más de 1 hora de antigüedad)
+        foreach (glob($backupDir . '/*') as $file) {
+            if (is_file($file) && (time() - filemtime($file) > 3600)) {
+                @unlink($file);
+            }
+        }
+
+        // 4. Lanzar el Artisan Command en background (independiente del SO)
+        $callbackUrl = $request->input('callback_url');
+        $userId = $request->input('user_id');
+        $appKey = $request->input('app_key');
+
+        if ($isWindows) {
+            // En Windows (Laragon / Desarrollo)
+            $phpBinary = PHP_BINARY;
+            if (str_contains($phpBinary, 'php-cgi.exe')) {
+                $phpBinary = str_replace('php-cgi.exe', 'php.exe', $phpBinary);
+            }
+            $artisanCmd = $phpBinary . " \"" . base_path('artisan') . "\" db:backup-worker --file=\"{$filename}\" --callback=\"{$callbackUrl}\" --user={$userId} --app=\"{$appKey}\"";
+            pclose(popen("start /B {$artisanCmd}", "r"));
+        } else {
+            // En Linux / Ubuntu (Producción)
+            $artisanCmd = "php \"" . base_path('artisan') . "\" db:backup-worker --file=\"{$filename}\" --callback=\"{$callbackUrl}\" --user={$userId} --app=\"{$appKey}\"";
+            exec("{$artisanCmd} > /dev/null 2>&1 &");
+        }
+
+        Log::info("Backup Hija: Tarea en segundo plano iniciada para {$filename}");
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Proceso de respaldo iniciado asíncronamente en la hija.'
+        ], 202);
+    }
+
+    /**
+     * Endpoint para descargar el archivo y auto-destruirlo.
+     * GET /api/internal/download-backup
+     */
+    public function download(Request $request)
+    {
+        $token = config('backups.token');
+        $filename = $request->query('file');
+        $timestamp = $request->query('timestamp');
+        $signature = $request->query('signature');
+
+        // 1. Validar expiración (máximo 15 minutos para iniciar la descarga)
+        if (abs(time() - (int)$timestamp) > 900) {
+            return response()->json(['error' => 'El enlace de descarga ha expirado.'], 403);
+        }
+
+        // 2. Validar firma HMAC-SHA256 de descarga
+        $payload = json_encode([
+            'file' => $filename,
+            'timestamp' => (int)$timestamp
+        ]);
+
+        $expectedSignature = hash_hmac('sha256', $timestamp . $payload, $token);
+
+        if (!hash_equals($expectedSignature, (string)$signature)) {
+            Log::error("Backup Hija: Intento de descarga con firma incorrecta.");
+            return response()->json(['error' => 'Firma de descarga inválida.'], 401);
+        }
+
+        $filePath = storage_path('app/backups') . DIRECTORY_SEPARATOR . $filename;
+
+        if (!file_exists($filePath)) {
+            Log::error("Backup Hija: Archivo no encontrado: {$filename}");
+            return response()->json(['error' => 'El archivo solicitado ya no existe o ya fue descargado.'], 404);
+        }
+
+        Log::info("Backup Hija: Sirviendo descarga de {$filename} y ejecutando auto-destrucción.");
+
+        // 3. Servir y borrar inmediatamente después del envío
+        return response()->download($filePath)->deleteFileAfterSend(true);
+    }
+}

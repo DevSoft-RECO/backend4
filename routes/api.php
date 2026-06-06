@@ -76,3 +76,8 @@ Route::middleware('sso')->group(function () {
     Route::get('/dashboard', [\App\Http\Controllers\DashboardController::class, 'index']);
     Route::get('/dashboard/resolution-details', [\App\Http\Controllers\DashboardController::class, 'getResolutionDetails']);
 });
+
+// === BACKUP SYSTEM ===
+// Rutas internas de respaldo llamadas por la APP_MADRE (Firmadas con HMAC)
+Route::post('/internal/backup', [\App\Http\Controllers\InternalBackupController::class, 'generate']);
+Route::get('/internal/download-backup', [\App\Http\Controllers\InternalBackupController::class, 'download']);
