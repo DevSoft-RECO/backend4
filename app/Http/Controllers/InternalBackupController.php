@@ -125,7 +125,60 @@ class InternalBackupController extends Controller
 
         Log::info("Backup Hija: Sirviendo descarga de {$filename} y ejecutando auto-destrucción.");
 
-        // 3. Servir y borrar inmediatamente después del envío
-        return response()->download($filePath)->deleteFileAfterSend(true);
+        // Limpiar el búfer de salida para evitar que espacios en blanco u otros datos corrompan el archivo binario
+        if (ob_get_level()) {
+            ob_end_clean();
+        }
+
+        // 3. Servir el archivo. La eliminación la controlará la Madre explícitamente o por el auto-cleaner de 1 hora.
+        return response()->download($filePath, null, [
+            'X-Accel-Buffering' => 'no'
+        ]);
+    }
+
+    /**
+     * Endpoint para eliminar físicamente un archivo de respaldo.
+     * DELETE /api/internal/backup
+     */
+    public function deleteFile(Request $request)
+    {
+        $token = config('backups.token');
+        $signature = $request->header('X-Signature');
+        $timestamp = $request->header('X-Timestamp');
+
+        // 1. Validar expiración (máximo 5 minutos)
+        if (abs(time() - (int)$timestamp) > 300) {
+            return response()->json(['error' => 'Petición expirada.'], 403);
+        }
+
+        // 2. Validar firma HMAC-SHA256
+        $payload = json_encode([
+            'file' => $request->input('file'),
+            'timestamp' => (int)$timestamp
+        ]);
+
+        $expectedSignature = hash_hmac('sha256', $timestamp . $payload, $token);
+
+        if (!hash_equals($expectedSignature, (string)$signature)) {
+            Log::error("Backup Hija: Intento de borrado con firma incorrecta.");
+            return response()->json(['error' => 'No autorizado. Firma no coincide.'], 401);
+        }
+
+        $filename = $request->input('file');
+        $filePath = storage_path('app/backups') . DIRECTORY_SEPARATOR . $filename;
+
+        if (file_exists($filePath)) {
+            @unlink($filePath);
+            Log::info("Backup Hija: Archivo {$filename} eliminado a petición de la Madre.");
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Archivo eliminado correctamente.'
+            ]);
+        }
+
+        return response()->json([
+            'status' => 'error',
+            'message' => 'El archivo no existe en el servidor de la hija.'
+        ], 404);
     }
 }

@@ -63,7 +63,8 @@ class BackupWorkerCommand extends Command
         // Verificar el resultado
         if ($resultCode === 0 && file_exists($filePath)) {
             Log::info("BackupWorker: Respaldo generado con éxito: {$filename}");
-            $this->sendCallback($callbackUrl, $appKey, $filename, 'success', $userId);
+            $size = filesize($filePath);
+            $this->sendCallback($callbackUrl, $appKey, $filename, 'success', $userId, null, $size);
         } else {
             $errorMsg = "Error al ejecutar mysqldump. Código de salida: {$resultCode}";
             Log::error("BackupWorker: " . $errorMsg);
@@ -71,19 +72,25 @@ class BackupWorkerCommand extends Command
         }
     }
 
-    private function sendCallback($url, $appKey, $filename, $status, $userId, $error = null)
+    private function sendCallback($url, $appKey, $filename, $status, $userId, $error = null, $size = null)
     {
         $token = config('backups.token');
         $timestamp = time();
 
-        $payload = json_encode([
+        $payloadData = [
             'app_key' => $appKey,
             'file' => $filename,
             'status' => $status,
             'user_id' => (int)$userId,
             'timestamp' => $timestamp,
             'error' => $error
-        ]);
+        ];
+
+        if ($size !== null) {
+            $payloadData['size'] = $size;
+        }
+
+        $payload = json_encode($payloadData);
 
         // Firmar la petición de retorno para que la Madre sepa que es auténtica
         $signature = hash_hmac('sha256', $timestamp . $payload, $token);

@@ -80,4 +80,5 @@ Route::middleware('sso')->group(function () {
 // === BACKUP SYSTEM ===
 // Rutas internas de respaldo llamadas por la APP_MADRE (Firmadas con HMAC)
 Route::post('/internal/backup', [\App\Http\Controllers\InternalBackupController::class, 'generate']);
+Route::delete('/internal/backup', [\App\Http\Controllers\InternalBackupController::class, 'deleteFile']);
 Route::get('/internal/download-backup', [\App\Http\Controllers\InternalBackupController::class, 'download']);
