@@ -868,7 +868,7 @@ class SolicitudController extends Controller
             $query->where('categoria_general_id', $request->categoria_general_id);
         }
 
-        $solicitudes = $query->with(['creadoPor', 'responsable', 'agencia', 'subcategoria'])->orderBy('id', 'desc')->get();
+        $solicitudes = $query->with(['creadoPor', 'responsable', 'agencia', 'subcategoria', 'categoriaGeneral', 'seguimientos'])->orderBy('id', 'desc')->get();
 
         $callback = function() use ($solicitudes) {
             $file = fopen('php://output', 'w');
@@ -878,31 +878,66 @@ class SolicitudController extends Controller
             fputcsv($file, [
                 'ID',
                 'Fecha Creacion',
+                'Fecha Finalizacion',
+                'Tiempo Transcurrido',
                 'Titulo',
                 'Estado',
                 'Agencia',
                 'Area/Ubicacion',
-                'Solicitante',
-                'Responsable',
-                'Categoria',
-                'Fecha Asignacion',
-                'Fecha Toma Caso',
+                'Creador/Solicitante',
+                'Responsable Asignado',
+                'Participantes de Seguimiento',
+                'Categoria General',
+                'Subcategoria',
                 'Descripcion'
             ]);
 
             foreach ($solicitudes as $sol) {
+                $fechaTermino = null;
+                $tiempoTranscurrido = 'En proceso';
+                
+                if ($sol->estado === 'cerrada') {
+                    $ultimoSeg = $sol->seguimientos
+                        ->whereIn('tipo_accion', ['validacion', 'cierre'])
+                        ->sortByDesc('created_at')
+                        ->first();
+                        
+                    $fechaTermino = $ultimoSeg ? $ultimoSeg->created_at : $sol->updated_at;
+                    
+                    if ($fechaTermino) {
+                        $diff = $sol->created_at->diff($fechaTermino);
+                        $partes = [];
+                        if ($diff->d > 0) {
+                            $partes[] = $diff->d . 'd';
+                        }
+                        if ($diff->h > 0 || $diff->d > 0) {
+                            $partes[] = $diff->h . 'h';
+                        }
+                        $partes[] = $diff->i . 'm';
+                        $tiempoTranscurrido = implode(' ', $partes);
+                    }
+                }
+
+                $participantes = $sol->seguimientos
+                    ->pluck('seguimiento_por_nombre')
+                    ->filter()
+                    ->unique()
+                    ->implode(', ');
+
                 fputcsv($file, [
                     $sol->id,
-                    $sol->created_at->format('d/m/Y H:i'),
+                    $sol->created_at ? $sol->created_at->format('d/m/Y H:i') : 'N/A',
+                    $fechaTermino ? $fechaTermino->format('d/m/Y H:i') : 'N/A',
+                    $tiempoTranscurrido,
                     $sol->titulo,
                     ucwords(str_replace('_', ' ', $sol->estado)),
                     $sol->agencia->nombre ?? 'N/A',
                     $sol->area ?? 'N/A',
                     $sol->creadoPor->name ?? 'N/A',
                     $sol->responsable->name ?? 'N/A',
+                    $participantes ?: 'Ninguno',
+                    $sol->categoriaGeneral->nombre ?? 'N/A',
                     $sol->subcategoria->nombre ?? 'N/A',
-                    $sol->fecha_asignacion ? $sol->fecha_asignacion->format('d/m/Y H:i') : 'N/A',
-                    $sol->fecha_toma_caso ? $sol->fecha_toma_caso->format('d/m/Y H:i') : 'N/A',
                     $sol->descripcion
                 ]);
             }
@@ -912,6 +947,116 @@ class SolicitudController extends Controller
         $headers = [
             'Content-Type' => 'text/csv',
             'Content-Disposition' => 'attachment; filename="reporte_solicitudes_' . date('Ymd_His') . '.csv"',
+        ];
+
+        return response()->stream($callback, 200, $headers);
+    }
+
+    public function exportGeneralCsv(Request $request)
+    {
+        $user = Auth::user();
+        $roles = $user->roles ?? [];
+        
+        if (!in_array('Super Admin', $roles)) {
+            return response()->json(['message' => 'No tiene permiso para exportar el reporte general'], 403);
+        }
+
+        $query = Solicitud::query();
+
+        if ($request->has('estado') && $request->estado) {
+            $query->where('estado', $request->estado);
+        }
+
+        if ($request->has('categoria_general_id') && $request->categoria_general_id) {
+            $query->where('categoria_general_id', $request->categoria_general_id);
+        }
+
+        if ($request->has('fecha_inicio') && $request->fecha_inicio) {
+            $query->whereDate('created_at', '>=', $request->fecha_inicio);
+        }
+
+        if ($request->has('fecha_fin') && $request->fecha_fin) {
+            $query->whereDate('created_at', '<=', $request->fecha_fin);
+        }
+
+        $solicitudes = $query->with(['creadoPor', 'responsable', 'agencia', 'subcategoria', 'categoriaGeneral', 'seguimientos'])->orderBy('id', 'desc')->get();
+
+        $callback = function() use ($solicitudes) {
+            $file = fopen('php://output', 'w');
+            fprintf($file, chr(0xEF).chr(0xBB).chr(0xBF)); // BOM para UTF-8 (Excel friendly)
+            
+            fputcsv($file, [
+                'ID',
+                'Fecha Creacion',
+                'Fecha Finalizacion',
+                'Tiempo Transcurrido',
+                'Titulo',
+                'Estado',
+                'Agencia',
+                'Area/Ubicacion',
+                'Creador/Solicitante',
+                'Responsable Asignado',
+                'Participantes de Seguimiento',
+                'Categoria General',
+                'Subcategoria',
+                'Descripcion'
+            ]);
+
+            foreach ($solicitudes as $sol) {
+                $fechaTermino = null;
+                $tiempoTranscurrido = 'En proceso';
+                
+                if ($sol->estado === 'cerrada') {
+                    $ultimoSeg = $sol->seguimientos
+                        ->whereIn('tipo_accion', ['validacion', 'cierre'])
+                        ->sortByDesc('created_at')
+                        ->first();
+                        
+                    $fechaTermino = $ultimoSeg ? $ultimoSeg->created_at : $sol->updated_at;
+                    
+                    if ($fechaTermino) {
+                        $diff = $sol->created_at->diff($fechaTermino);
+                        $partes = [];
+                        if ($diff->d > 0) {
+                            $partes[] = $diff->d . 'd';
+                        }
+                        if ($diff->h > 0 || $diff->d > 0) {
+                            $partes[] = $diff->h . 'h';
+                        }
+                        $partes[] = $diff->i . 'm';
+                        $tiempoTranscurrido = implode(' ', $partes);
+                    }
+                }
+
+                $participantes = $sol->seguimientos
+                    ->pluck('seguimiento_por_nombre')
+                    ->filter()
+                    ->unique()
+                    ->implode(', ');
+
+                fputcsv($file, [
+                    $sol->id,
+                    $sol->created_at ? $sol->created_at->format('d/m/Y H:i') : 'N/A',
+                    $fechaTermino ? $fechaTermino->format('d/m/Y H:i') : 'N/A',
+                    $tiempoTranscurrido,
+                    $sol->titulo,
+                    ucwords(str_replace('_', ' ', $sol->estado)),
+                    $sol->agencia->nombre ?? 'N/A',
+                    $sol->area ?? 'N/A',
+                    $sol->creadoPor->name ?? 'N/A',
+                    $sol->responsable->name ?? 'N/A',
+                    $participantes ?: 'Ninguno',
+                    $sol->categoriaGeneral->nombre ?? 'N/A',
+                    $sol->subcategoria->nombre ?? 'N/A',
+                    $sol->descripcion
+                ]);
+            }
+            fclose($file);
+        };
+
+        $headers = [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => 'attachment; filename="reporte_general_solicitudes_' . date('Ymd_His') . '.csv"',
         ];
 
         return response()->stream($callback, 200, $headers);

@@ -33,6 +33,7 @@ Route::middleware('sso')->prefix('solicitudes')->group(function () {
     Route::get('/bandeja-admin/mis-asignaciones', [BandejaAdminController::class, 'misAsignaciones']);
 
     Route::get('/export', [SolicitudController::class, 'exportCsv']);
+    Route::get('/export-general', [SolicitudController::class, 'exportGeneralCsv']);
     Route::get('/', [SolicitudController::class, 'index']);
     Route::post('/', [SolicitudController::class, 'store']);
     Route::delete('/{id}', [SolicitudController::class, 'destroy'])->where('id', '[0-9]+');
