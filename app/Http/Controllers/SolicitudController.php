@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Mail;
 use App\Mail\SolicitudAsignada;
 use App\Mail\SolicitudPendienteValidacion;
 use Illuminate\Support\Facades\Storage;
+use App\Helpers\ImageOptimizer;
 
 class SolicitudController extends Controller
 {
@@ -133,15 +134,23 @@ class SolicitudController extends Controller
             foreach ($files as $file) {
                 if ($file && $file->isValid() && $file->getSize() > 0) {
                     $originalName = $file->getClientOriginalName();
-                    $filename = uniqid() . '_' . preg_replace('/[^a-zA-Z0-9.\-_]/', '', $originalName); // Sanitize filename
+                    
+                    $optimization = ImageOptimizer::optimizeForUpload($file, 1920, 70);
+                    $filename = uniqid() . '_' . $optimization['name'];
 
                     // Guardar en almacenamiento LOCAL temporal (Milésimas de segundo)
-                    $path = $file->storeAs('gestiones/temp', $filename, 'local');
+                    if ($optimization['is_optimized']) {
+                        $path = Storage::disk('local')->putFileAs('gestiones/temp', new \Illuminate\Http\File($optimization['path']), $filename);
+                        @unlink($optimization['path']);
+                    } else {
+                        $filename = uniqid() . '_' . preg_replace('/[^a-zA-Z0-9.\-_]/', '', $originalName); // Sanitize filename
+                        $path = $file->storeAs('gestiones/temp', $filename, 'local');
+                    }
 
                     if ($path) {
                         $tempFiles[] = [
                             'path' => $path,
-                            'name' => $originalName
+                            'name' => $optimization['is_optimized'] ? $optimization['name'] : $originalName
                         ];
                     }
                 }
@@ -367,8 +376,16 @@ class SolicitudController extends Controller
                     $target = 'final';
                 }
 
-                $filename = uniqid() . '_' . $file->getClientOriginalName();
-                $path = $file->storeAs($folder, $filename, $this->disk);
+                $optimization = ImageOptimizer::optimizeForUpload($file, 1920, 70);
+                $filename = uniqid() . '_' . $optimization['name'];
+
+                if ($optimization['is_optimized']) {
+                    $path = Storage::disk($this->disk)->putFileAs($folder, new \Illuminate\Http\File($optimization['path']), $filename);
+                    @unlink($optimization['path']);
+                } else {
+                    $filename = uniqid() . '_' . $file->getClientOriginalName();
+                    $path = $file->storeAs($folder, $filename, $this->disk);
+                }
 
                 if ($path) {
                     $evidenciasPaths[] = $path; // Para el seguimiento (display en chat)
@@ -638,8 +655,17 @@ class SolicitudController extends Controller
 
         // Subir archivo
         $file = $request->file('file');
-        $filename = uniqid() . '_' . $file->getClientOriginalName();
-        $path = $file->storeAs($folder, $filename, $this->disk);
+        
+        $optimization = ImageOptimizer::optimizeForUpload($file, 1920, 70);
+        $filename = uniqid() . '_' . $optimization['name'];
+
+        if ($optimization['is_optimized']) {
+            $path = Storage::disk($this->disk)->putFileAs($folder, new \Illuminate\Http\File($optimization['path']), $filename);
+            @unlink($optimization['path']);
+        } else {
+            $filename = uniqid() . '_' . $file->getClientOriginalName();
+            $path = $file->storeAs($folder, $filename, $this->disk);
+        }
 
         if (!$path) {
             return response()->json(['error' => 'Error subiendo archivo a GCS'], 500);
