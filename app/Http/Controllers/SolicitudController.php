@@ -982,8 +982,13 @@ class SolicitudController extends Controller
     {
         $user = Auth::user();
         $roles = $user->roles ?? [];
+        $permissions = $user->permissions ?? $user->permisos ?? [];
         
-        if (!in_array('Super Admin', $roles)) {
+        $hasPermission = in_array('Super Admin', $roles) 
+            || in_array('descargar-reporte-tickets', $permissions)
+            || (method_exists($user, 'hasPermissionTo') && $user->hasPermissionTo('descargar-reporte-tickets'));
+
+        if (!$hasPermission) {
             return response()->json(['message' => 'No tiene permiso para exportar el reporte general'], 403);
         }
 
