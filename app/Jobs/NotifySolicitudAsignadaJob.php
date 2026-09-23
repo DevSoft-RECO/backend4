@@ -57,6 +57,25 @@ class NotifySolicitudAsignadaJob implements ShouldQueue
             } else {
                 Log::warning("NotifySolicitudAsignadaJob: El responsable interno no tiene correo configurado.");
             }
+
+            // 1.2 Notificación en tiempo real (Portal Web y App Móvil si el técnico la tiene)
+            try {
+                $motherApiUrl = config('services.mother.api_url') ?? 'http://localhost:8000';
+                $serviceToken = config('services.mother.service_token') ?? 'token_secreto_yamankutx_notificaciones';
+
+                \Illuminate\Support\Facades\Http::withHeaders([
+                    'X-SSO-Service-Token' => $serviceToken,
+                    'Accept' => 'application/json'
+                ])->timeout(2)->post("{$motherApiUrl}/api/sso/notifications/broadcast", [
+                    'target_user_id' => $solicitud->responsable_id,
+                    'title' => '¡Nuevo Ticket Asignado!',
+                    'message' => "Se te ha asignado el ticket #{$solicitud->id}: '{$solicitud->titulo}'",
+                    'app' => 'Tickets',
+                    'ticket_id' => $solicitud->id,
+                ]);
+            } catch (\Exception $e) {
+                Log::error("NotifySolicitudAsignadaJob Error Broadcast: " . $e->getMessage());
+            }
         }
         elseif ($solicitud->responsable_tipo === 'externo') {
             // 2. Envío de SMS para Atención Externa

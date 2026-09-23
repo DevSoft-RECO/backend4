@@ -117,7 +117,8 @@ class SolicitudController extends Controller
                         'target_role' => 'Super Admin',
                         'title' => '¡Nuevo Ticket Tecnológico!',
                         'message' => $mensajeCompleto,
-                        'app' => 'Tickets'
+                        'app' => 'Tickets',
+                        'ticket_id' => $solicitud->id,
                     ]);
                 } catch (\Exception $e) {
                     \Log::error("Error al emitir notificación de ticket tecnológico: " . $e->getMessage());
@@ -285,6 +286,27 @@ class SolicitudController extends Controller
             'tipo_accion' => 'comentario'
         ]);
 
+        // Notificación inmediata al portal web y a la app móvil del responsable asignado
+        if ($request->responsable_tipo === 'interno' && $request->responsable_id) {
+            try {
+                $motherApiUrl = config('services.mother.api_url') ?? 'http://localhost:8000';
+                $serviceToken = config('services.mother.service_token') ?? 'token_secreto_yamankutx_notificaciones';
+
+                \Illuminate\Support\Facades\Http::withHeaders([
+                    'X-SSO-Service-Token' => $serviceToken,
+                    'Accept' => 'application/json'
+                ])->timeout(2)->post("{$motherApiUrl}/api/sso/notifications/broadcast", [
+                    'target_user_id' => $solicitud->responsable_id,
+                    'title' => '¡Nuevo Ticket Asignado!',
+                    'message' => "Se te ha asignado el ticket #{$solicitud->id}: '{$solicitud->titulo}'",
+                    'app' => 'Tickets',
+                    'ticket_id' => $solicitud->id,
+                ]);
+            } catch (\Exception $e) {
+                \Log::error("Error al notificar asignación a responsable {$solicitud->responsable_id}: " . $e->getMessage());
+            }
+        }
+
         // Despachar notificación en segundo plano (Email o SMS según responsable_tipo)
         \App\Jobs\NotifySolicitudAsignadaJob::dispatch($solicitud);
 
@@ -328,6 +350,25 @@ class SolicitudController extends Controller
             'comentario' => "Caso tomado por {$user->name}",
             'tipo_accion' => 'visita'
         ]);
+
+        // Notificación inmediata al portal web y a la app móvil
+        try {
+            $motherApiUrl = config('services.mother.api_url') ?? 'http://localhost:8000';
+            $serviceToken = config('services.mother.service_token') ?? 'token_secreto_yamankutx_notificaciones';
+
+            \Illuminate\Support\Facades\Http::withHeaders([
+                'X-SSO-Service-Token' => $serviceToken,
+                'Accept' => 'application/json'
+            ])->timeout(2)->post("{$motherApiUrl}/api/sso/notifications/broadcast", [
+                'target_user_id' => $user->id,
+                'title' => '¡Caso Tomado!',
+                'message' => "Has tomado la atención del ticket #{$solicitud->id}: '{$solicitud->titulo}'",
+                'app' => 'Tickets',
+                'ticket_id' => $solicitud->id,
+            ]);
+        } catch (\Exception $e) {
+            \Log::error("Error al notificar auto-asignación a {$user->id}: " . $e->getMessage());
+        }
 
         return response()->json($solicitud);
     }
@@ -459,10 +500,11 @@ class SolicitudController extends Controller
                     'X-SSO-Service-Token' => $serviceToken,
                     'Accept' => 'application/json'
                 ])->timeout(2)->post("{$motherApiUrl}/api/sso/notifications/broadcast", [
-                    'target_user_id' => $solicitud->creado_por_id, // Dirigido directamente al creador
+                    'target_user_id' => $solicitud->creado_por_id, // Dirigido directamente al creador (solo web)
                     'title' => '¡Ticket Pendiente de Validar!',
                     'message' => "Tu ticket '{$solicitud->titulo}' está resuelto y listo para ser validado.",
-                    'app' => 'Tickets'
+                    'app' => 'Tickets',
+                    'skip_mobile' => true,
                 ]);
             } catch (\Exception $e) {
                 \Log::error("Error al enviar notificación real-time de validación al creador {$solicitud->creado_por_id}: " . $e->getMessage());
@@ -548,7 +590,8 @@ class SolicitudController extends Controller
                     'target_user_id' => $solicitud->responsable_id, // Dirigido directamente al responsable del seguimiento
                     'title' => $tituloNotif,
                     'message' => $msgNotif,
-                    'app' => 'Tickets'
+                    'app' => 'Tickets',
+                    'ticket_id' => $solicitud->id,
                 ]);
             } catch (\Exception $e) {
                 \Log::error("Error al notificar cierre/reapertura al responsable {$solicitud->responsable_id}: " . $e->getMessage());
